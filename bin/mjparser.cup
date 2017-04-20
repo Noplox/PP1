@@ -48,9 +48,15 @@ non terminal ConstantDeclarationList, ConstantDeclaration, Constant;
 non terminal ExtendsOpt, ClassBody;
 non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt, MethodReturnType, FormalParamListOpt, 
 		FormalParamList, FormalParam;
-non terminal StatementListOpt;
+non terminal StatementListOpt, StatementList;
 non terminal VariableDeclarationWrapperOpt, VariableDeclarationList, VariableDeclaration;
-
+non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
+non terminal Designator, DesignatorOperation, AssignOperator;
+non terminal AddOpRight, MulOpRight, AddOpLeft, MulOpLeft; 
+non terminal ActualParamListOpt, ActualParamList, ExpressionList;
+non terminal Expression, MinusOpt;
+non terminal TermList, Term, AddOp, FactorList, Factor, MulOp;
+non terminal FunctionCall, ConstructorCall;
 
 precedence left ELSE;
 
@@ -85,8 +91,80 @@ VariableDeclaration ::= IDENT:VarName | IDENT:VarName LINDEX RINDEX;
 
 Type ::= IDENT:TypeName;
 
+Statement ::= DesignatorStatement SEMICOLON
+				| IfStatement
+				| ForStatement
+				| BREAK SEMICOLON
+				| CONTINUE SEMICOLON
+				| ReturnStatement SEMICOLON
+				| ReadStatement SEMICOLON
+				| PrintStatement SEMICOLON
+				| LCURLYBRACE StatementListOpt RCURLYBRACE;
+
+StatementListOpt ::= StatementList | /* epsilon */;
+StatementList ::= StatementList Statement | Statement;
+
+DesignatorStatement ::= Designator DesignatorOperation;
+DesignatorOperation ::= AssignOperator Expression | LPAREN ActualParamListOpt RPAREN | INCREMENT | DECREMENT;
+AssignOperator ::= ASSIGN | AddOpRight | MulOpRight;
+AddOpRight ::= PLUSASSIGN | MINUSASSIGN;
+MulOpRight ::= MULASSIGN | DIVASSIGN | MODASSIGN;
+ActualParamListOpt ::= ActualParamList | /* epsilon */;
+ActualParamList ::= ExpressionList;
+ExpressionList ::= ExpressionList COMMA Expression | Expression;
+
+Expression ::= MinusOpt TermList;
+MinusOpt ::= MINUS | /* epsilon */;
+TermList ::= TermList AddOp Term | Term;
+Term ::= FactorList;
+FactorList ::= FactorList MulOp Factor | Factor;
+Factor ::= Designator
+			| FunctionCall
+			| NUMCONST
+			| CHARCONST
+			| BOOLCONST
+			| ConstructorCall
+			| LPAREN Expression RPAREN;
+
+AddOp ::= AddOpLeft | AddOpRight;
+AddOpLeft ::= PLUS | MINUS;
+MulOp ::= MulOpLeft | MulOpRight;
+MulOpLeft ::= MUL | DIV | MOD;
+
+Designator ::= IDENT:VarName | ObjectPropertyRef | ArrayElemRef;
+ObjectPropertyRef ::= ObjectPropertyRef DOT IDENT:propertyName | IDENT:ObjectName;
+ArrayElemRef ::= 
 
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+		
