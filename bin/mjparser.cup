@@ -1,0 +1,92 @@
+package source;
+
+import org.apache.log4j.*;
+import java_cup.runtime.*;
+import util.ParserHelper;
+
+parser code {:
+	Logger log = Logger.getLogger(getClass());
+	ParserHelper parserHelper = new ParserHelper();
+
+	public void report_fatal_error(String message, Object info) throws java.lang.Exception {
+      done_parsing();
+      report_error(message, info);
+    }
+  
+    public void syntax_error(Symbol cur_token) {
+        report_error("\nSintaksna greska", cur_token);
+    }
+  
+    public void unrecovered_syntax_error(Symbol cur_token) throws java.lang.Exception {
+        report_fatal_error("Fatalna greska, parsiranje se ne moze nastaviti", cur_token);
+    }
+
+    public void report_error(String message, Object info) {
+    	StringBuilder msg = new StringBuilder(message); 
+    	if (info instanceof Symbol)
+            msg.append (" na liniji ").append(((Symbol)info).left);
+        log.error(msg.toString());
+	}
+:}
+
+scan with {:
+	Symbol s = this.getScanner().next_token();
+	if (s != null && s.value != null) 
+		log.info(s.toString() + " " + s.value.toString());
+	return s;
+:}
+
+terminal PROGRAM, BREAK, CLASS, ELSE, CONST, IF, NEW, PRINT, READ, RETURN, VOID, FOR, EXTENDS, CONTINUE, STATIC;
+terminal IDENT;
+terminal NUMCONST, CHARCONST, BOOLCONST;
+terminal PLUS, MINUS, MUL, DIV, MOD, EQU, NOTEQU, GT, GTEQU, LE, LEQU, AND, OR, ASSIGN, PLUSASSIGN, MINUSASSIGN, MULASSIGN, DIVASSIGN, MODASSIGN, INCREMENT, DECREMENT, SEMICOLON, COMMA, DOT, LPAREN, RPAREN, LINDEX, RINDEX, LCURLYBRACE, RCURLYBRACE;
+
+non terminal Program, ProgramDeclarationListOpt, ProgramBody, ConcreteProgramDeclarations;
+non terminal ConstantDeclarationWrapper, ClassDeclaration, VariableDeclarationWrapper;
+non terminal Type;
+non terminal ConstantDeclarationList, ConstantDeclaration, Constant;
+non terminal ExtendsOpt, ClassBody;
+non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt, MethodReturnType, FormalParamListOpt, 
+		FormalParamList, FormalParam;
+non terminal StatementListOpt;
+non terminal VariableDeclarationWrapperOpt, VariableDeclarationList, VariableDeclaration;
+
+
+precedence left ELSE;
+
+//Stavljanje epsilon u VariableDeclarationWrapper mozda izazove R/R conflict!!
+Program ::= PROGRAM IDENT:ProgramName ProgramDeclarationListOpt LCURLYBRACE ProgramBody RCURLYBRACE;
+ProgramDeclarationListOpt ::=  ProgramDeclarationListOpt ConcreteProgramDeclarations | /* epsilon */;
+ConcreteProgramDeclarations ::= ConstantDeclarationWrapper | ClassDeclaration | VariableDeclarationWrapper;
+ProgramBody ::= MethodDeclarationListOpt;
+
+ConstantDeclarationWrapper ::= CONST Type ConstantDeclarationList SEMICOLON;
+ConstantDeclarationList ::= ConstantDeclaration | ConstantDeclaration COMMA ConstantDeclarationList;
+ConstantDeclaration ::= IDENT:ConstName ASSIGN Constant:Const;
+Constant ::= NUMCONST | CHARCONST | BOOLCONST;
+
+ClassDeclaration ::= CLASS IDENT:ClassName ExtendsOpt LCURLYBRACE VariableDeclarationWrapper ClassBody RCURLYBRACE;
+ExtendsOpt ::= EXTENDS Type | /* epsilon */;
+ClassBody ::= MethodDeclarationListOpt;
+
+MethodDeclarationListOpt ::= MethodDeclarationListOpt MethodDeclaration | /* epsilon */;
+MethodDeclaration ::= StaticOpt MethodReturnType IDENT:MethodName LPAREN FormalParamListOpt RPAREN VariableDeclarationWrapper/*Opt?*/ 
+						LCURLYBRACE StatementListOpt RCURLYBRACE;
+StaticOpt ::= STATIC | /* epsilon */;
+MethodReturnType ::= VOID | Type;
+FormalParamListOpt ::= FormalParamList | /* epsilon */;
+FormalParamList ::= FormalParamList COMMA FormalParam | FormalParam;
+FormalParam ::= Type IDENT:ParamName | Type IDENT:ParamName LINDEX RINDEX;
+
+VariableDeclarationWrapperOpt ::= VariableDeclarationWrapper | /* epsilon */;
+VariableDeclarationWrapper ::= Type VariableDeclarationList SEMICOLON;
+VariableDeclarationList ::= VariableDeclarationList COMMA VariableDeclaration | VariableDeclaration;
+VariableDeclaration ::= IDENT:VarName | IDENT:VarName LINDEX RINDEX;
+
+Type ::= IDENT:TypeName;
+
+
+
+
+
+
