@@ -1,0 +1,12 @@
+/JFlex.jar
+/java-cup-11a.jar
+/lexerTest.mj
+/log4j-1.2.15.jar
+/log4j.xml
+/mjlexer.flex
+/mjparser.cup
+/source/
+/symboltable.jar
+/util/
+/program.mj
+/parserTest.mj

@@ -49,7 +49,7 @@ non terminal ExtendsOpt, ClassBody;
 non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt, MethodReturnType, FormalParamListOpt, 
 		FormalParamList, FormalParam;
 non terminal StatementListOpt, StatementList;
-non terminal VariableDeclarationWrapperOpt, VariableDeclarationList, VariableDeclaration;
+non terminal VariableDeclarationWrapperListOpt, VariableDeclarationList, VariableDeclaration;
 non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
 non terminal Designator, DesignatorOperation, AssignOperator;
 non terminal AddOpRight, MulOpRight, AddOpLeft, MulOpLeft; 
@@ -57,18 +57,24 @@ non terminal ActualParamListOpt, ActualParamList, ExpressionList;
 non terminal Expression, MinusOpt;
 non terminal TermList, Term, AddOp, FactorList, Factor, MulOp;
 non terminal FunctionCall, ConstructorCall;
+non terminal ObjectPropertyRef, ArrayElemRef, IndexingList;
+non terminal Condition, ElseOpt, ConditionTermList, ConditionTerm, ConditionFactorList, ConditionFactor, Relop;
+non terminal DesignatorStatementOpt, ConditionOpt, ExpressionOpt, NumConstOpt, IndexingExpressionOpt;
 
 precedence left ELSE;
 
-//Stavljanje epsilon u VariableDeclarationWrapper mozda izazove R/R conflict!!
-Program ::= PROGRAM IDENT:ProgramName ProgramDeclarationListOpt LCURLYBRACE ProgramBody RCURLYBRACE;
+Program ::= PROGRAM IDENT:ProgramName ProgramDeclarationListOpt LCURLYBRACE {: parser.parserHelper.enteringProgram(); :} ProgramBody {: parser.parserHelper.exitingProgram(); :} RCURLYBRACE;
 ProgramDeclarationListOpt ::=  ProgramDeclarationListOpt ConcreteProgramDeclarations | /* epsilon */;
 ConcreteProgramDeclarations ::= ConstantDeclarationWrapper | ClassDeclaration | VariableDeclarationWrapper;
 ProgramBody ::= MethodDeclarationListOpt;
 
 ConstantDeclarationWrapper ::= CONST Type ConstantDeclarationList SEMICOLON;
 ConstantDeclarationList ::= ConstantDeclaration | ConstantDeclaration COMMA ConstantDeclarationList;
-ConstantDeclaration ::= IDENT:ConstName ASSIGN Constant:Const;
+ConstantDeclaration ::= IDENT:ConstName ASSIGN Constant:Const
+						{:
+							if(!parser.parserHelper.isInProgram())
+								parser.parserHelper.globalConstFound();
+						:};
 Constant ::= NUMCONST | CHARCONST | BOOLCONST;
 
 ClassDeclaration ::= CLASS IDENT:ClassName ExtendsOpt LCURLYBRACE VariableDeclarationWrapper ClassBody RCURLYBRACE;
@@ -76,18 +82,35 @@ ExtendsOpt ::= EXTENDS Type | /* epsilon */;
 ClassBody ::= MethodDeclarationListOpt;
 
 MethodDeclarationListOpt ::= MethodDeclarationListOpt MethodDeclaration | /* epsilon */;
-MethodDeclaration ::= StaticOpt MethodReturnType IDENT:MethodName LPAREN FormalParamListOpt RPAREN VariableDeclarationWrapper/*Opt?*/ 
-						LCURLYBRACE StatementListOpt RCURLYBRACE;
+MethodDeclaration ::= StaticOpt MethodReturnType IDENT:MethodName 
+					{: 
+						if(MethodName.equals("main"))
+							parser.parserHelper.enteringMain();
+					:} 
+					LPAREN FormalParamListOpt RPAREN VariableDeclarationWrapperListOpt
+					{: parser.parserHelper.exitingMain(); :}
+					LCURLYBRACE StatementListOpt RCURLYBRACE;
 StaticOpt ::= STATIC | /* epsilon */;
 MethodReturnType ::= VOID | Type;
 FormalParamListOpt ::= FormalParamList | /* epsilon */;
 FormalParamList ::= FormalParamList COMMA FormalParam | FormalParam;
 FormalParam ::= Type IDENT:ParamName | Type IDENT:ParamName LINDEX RINDEX;
 
-VariableDeclarationWrapperOpt ::= VariableDeclarationWrapper | /* epsilon */;
+VariableDeclarationWrapperListOpt ::= VariableDeclarationWrapperListOpt VariableDeclarationWrapper | /* epsilon */;
 VariableDeclarationWrapper ::= Type VariableDeclarationList SEMICOLON;
 VariableDeclarationList ::= VariableDeclarationList COMMA VariableDeclaration | VariableDeclaration;
-VariableDeclaration ::= IDENT:VarName | IDENT:VarName LINDEX RINDEX;
+VariableDeclaration ::= IDENT:VarName 
+						{:
+							if(!parser.parserHelper.isInProgram())
+								parser.parserHelper.globalVarFound();
+							else if(parser.parserHelper.isInMain())
+								parser.parserHelper.localVarFound();
+						:}
+						| IDENT:VarName LINDEX RINDEX
+						{:
+							if(!parser.parserHelper.isInProgram())
+								parser.parserHelper.globalArrayFound();
+						:};
 
 Type ::= IDENT:TypeName;
 
@@ -104,6 +127,7 @@ Statement ::= DesignatorStatement SEMICOLON
 StatementListOpt ::= StatementList | /* epsilon */;
 StatementList ::= StatementList Statement | Statement;
 
+DesignatorStatementOpt ::= DesignatorStatement | /* epsilon */;
 DesignatorStatement ::= Designator DesignatorOperation;
 DesignatorOperation ::= AssignOperator Expression | LPAREN ActualParamListOpt RPAREN | INCREMENT | DECREMENT;
 AssignOperator ::= ASSIGN | AddOpRight | MulOpRight;
@@ -113,6 +137,7 @@ ActualParamListOpt ::= ActualParamList | /* epsilon */;
 ActualParamList ::= ExpressionList;
 ExpressionList ::= ExpressionList COMMA Expression | Expression;
 
+ExpressionOpt ::= Expression | /* epsilon */;
 Expression ::= MinusOpt TermList;
 MinusOpt ::= MINUS | /* epsilon */;
 TermList ::= TermList AddOp Term | Term;
@@ -131,16 +156,36 @@ AddOpLeft ::= PLUS | MINUS;
 MulOp ::= MulOpLeft | MulOpRight;
 MulOpLeft ::= MUL | DIV | MOD;
 
+
+
 Designator ::= IDENT:VarName | ObjectPropertyRef | ArrayElemRef;
-ObjectPropertyRef ::= ObjectPropertyRef DOT IDENT:propertyName | IDENT:ObjectName;
-ArrayElemRef ::= 
+ObjectPropertyRef ::= Designator DOT IDENT:propertyName;
+ArrayElemRef ::= Designator IndexingList;
+IndexingList ::= LINDEX Expression:IndexingExpression RINDEX;
 
+IfStatement ::= IF LPAREN Condition RPAREN Statement ElseOpt;
+ElseOpt ::= ELSE Statement | /* epsilon */;
 
+ConditionOpt ::= Condition | /* epsilon */;
+Condition ::= ConditionTermList;
+ConditionTermList ::= ConditionTermList OR ConditionTerm | ConditionTerm;
+ConditionTerm ::= ConditionFactorList;
+ConditionFactorList ::= ConditionFactorList AND ConditionFactor | ConditionFactor;
+ConditionFactor ::= Expression | Expression Relop Expression;
+Relop ::= EQU | NOTEQU | GT | GTEQU | LE | LEQU;
 
+ForStatement ::= FOR LPAREN DesignatorStatementOpt SEMICOLON ConditionOpt SEMICOLON DesignatorStatementOpt RPAREN Statement;
 
+ReturnStatement ::= RETURN ExpressionOpt;
 
+ReadStatement ::= READ LPAREN Designator RPAREN;
 
+PrintStatement ::= PRINT LPAREN Expression NumConstOpt RPAREN;
+NumConstOpt ::= COMMA NUMCONST | /* epsilon */;
 
+FunctionCall ::= Designator:FunctionName LPAREN ActualParamListOpt RPAREN;
+ConstructorCall ::= NEW Type:ClassName IndexingExpressionOpt;
+IndexingExpressionOpt ::= LINDEX Expression RINDEX;
 
 
 

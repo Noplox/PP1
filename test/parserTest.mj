@@ -1,0 +1,26 @@
+program Programcic
+	const int jedan = 1, dva = 2;
+	char dva;
+	int niz[], t[];
+	
+{
+	int funkcija() {
+		a = a + b;
+		print(45);
+		//_loseimezafunkciju();
+	}
+	
+	int main(int broj) int a; int b, c; int drugiNiz[]; {
+		a = broj;
+		print(broj);
+		funkcija();
+		return broj;
+		a = objekat.atribut;
+		b = niz['a'];
+		b = niz[2].objekat;
+		b = objekat.niz[2];
+		objekat.metoda(2, 'a');
+		matrica[2][5] = matrica[objekat[2].metoda(7)][5][3];
+		c = new Klasa[objekat.niz[2]];
+	}
+}
