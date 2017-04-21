@@ -1,8 +1,9 @@
 program Programcic
-	const int jedan = 1, dva = 2;
-	char dva;
+	const int jedan = 50;
 	int niz[], t[];
-	
+	const bool prviBool = true;
+	const bool drugiBool = 'a';
+	int prom;
 {
 	int funkcija() {
 		a = a + b;

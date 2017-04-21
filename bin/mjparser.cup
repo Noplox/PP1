@@ -3,11 +3,14 @@ package source;
 import org.apache.log4j.*;
 import java_cup.runtime.*;
 import util.ParserHelper;
+import rs.etf.pp1.symboltable.Tab;
+import rs.etf.pp1.symboltable.concepts.*;
 
 parser code {:
 	Logger log = Logger.getLogger(getClass());
-	ParserHelper parserHelper = new ParserHelper();
 
+	ParserHelper parserHelper = new ParserHelper(this);
+	
 	public void report_fatal_error(String message, Object info) throws java.lang.Exception {
       done_parsing();
       report_error(message, info);
@@ -27,6 +30,13 @@ parser code {:
             msg.append (" na liniji ").append(((Symbol)info).left);
         log.error(msg.toString());
 	}
+
+	public void report_info(String message, Object info) {
+    	StringBuilder msg = new StringBuilder(message); 
+    	if (info instanceof Symbol)
+            msg.append (" na liniji ").append(((Symbol)info).left);
+        log.info(msg.toString());
+	}
 :}
 
 scan with {:
@@ -36,18 +46,31 @@ scan with {:
 	return s;
 :}
 
+init with {:
+	Tab.init();
+	parserHelper.initBool();
+:}
+
+action code {:
+	
+:}
+
 terminal PROGRAM, BREAK, CLASS, ELSE, CONST, IF, NEW, PRINT, READ, RETURN, VOID, FOR, EXTENDS, CONTINUE, STATIC;
-terminal IDENT;
-terminal NUMCONST, CHARCONST, BOOLCONST;
+terminal String IDENT;
 terminal PLUS, MINUS, MUL, DIV, MOD, EQU, NOTEQU, GT, GTEQU, LE, LEQU, AND, OR, ASSIGN, PLUSASSIGN, MINUSASSIGN, MULASSIGN, DIVASSIGN, MODASSIGN, INCREMENT, DECREMENT, SEMICOLON, COMMA, DOT, LPAREN, RPAREN, LINDEX, RINDEX, LCURLYBRACE, RCURLYBRACE;
+terminal Integer NUMCONST;
+terminal Character CHARCONST;
+terminal Boolean BOOLCONST;
 
 non terminal Program, ProgramDeclarationListOpt, ProgramBody, ConcreteProgramDeclarations;
 non terminal ConstantDeclarationWrapper, ClassDeclaration, VariableDeclarationWrapper;
-non terminal Type;
-non terminal ConstantDeclarationList, ConstantDeclaration, Constant;
+non terminal Obj Type;
+non terminal ConstantDeclarationList, ConstantDeclaration;
+non terminal Obj Constant;
 non terminal ExtendsOpt, ClassBody;
-non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt, MethodReturnType, FormalParamListOpt, 
+non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt, FormalParamListOpt, 
 		FormalParamList, FormalParam;
+non terminal Obj MethodReturnType;
 non terminal StatementListOpt, StatementList;
 non terminal VariableDeclarationWrapperListOpt, VariableDeclarationList, VariableDeclaration;
 non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
@@ -68,36 +91,81 @@ ProgramDeclarationListOpt ::=  ProgramDeclarationListOpt ConcreteProgramDeclarat
 ConcreteProgramDeclarations ::= ConstantDeclarationWrapper | ClassDeclaration | VariableDeclarationWrapper;
 ProgramBody ::= MethodDeclarationListOpt;
 
-ConstantDeclarationWrapper ::= CONST Type ConstantDeclarationList SEMICOLON;
+ConstantDeclarationWrapper ::= CONST Type:TypeName {: parser.parserHelper.setCurrentTypeDeclaration(TypeName); :} //Potrebno za ubacivanje konstanti iz liste u tabelu simbola  
+								ConstantDeclarationList SEMICOLON {: parser.parserHelper.setCurrentTypeDeclaration(null); :};
 ConstantDeclarationList ::= ConstantDeclaration | ConstantDeclaration COMMA ConstantDeclarationList;
 ConstantDeclaration ::= IDENT:ConstName ASSIGN Constant:Const
 						{:
 							if(!parser.parserHelper.isInProgram())
 								parser.parserHelper.globalConstFound();
+							
+							Obj temp = Tab.find(ConstName);
+							if(temp == Tab.noObj) {
+								parser.report_info("Constant "+ ConstName+" declared on line "+ ConstNameleft, null);
+								if(Const.getType().assignableTo(parser.parserHelper.getCurrentTypeDeclaration().getType())) {
+									Obj myObj = Tab.insert(Obj.Con, ConstName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+									myObj.setAdr(Const.getAdr());
+								}
+								else {
+									parser.report_error("Incompatible types", null);
+								}
+							} else if (temp.getKind() == Obj.Meth) {
+								parser.report_info("Constant "+ ConstName+" declared on line (has same name as a method)"+ ConstNameleft, null);
+								if(Const.getType().assignableTo(parser.parserHelper.getCurrentTypeDeclaration().getType())) {
+									Obj myObj = Tab.insert(Obj.Con, ConstName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+									myObj.setAdr(Const.getAdr());
+								}
+								else {
+									parser.report_error("Incompatible types", null);	
+								}
+							} else {
+								parser.report_error("A constant or a variable with the same name as " + ConstName + " is already defined!", null);
+							}
 						:};
-Constant ::= NUMCONST | CHARCONST | BOOLCONST;
+
+Constant ::= NUMCONST:Const {: RESULT = parser.parserHelper.evaluateNumConst(Const); :}
+			| CHARCONST:Const {: RESULT = parser.parserHelper.evaluateCharConst(Const); :}
+			| BOOLCONST:Const {: RESULT = parser.parserHelper.evaluateBoolConst(Const); :};
 
 ClassDeclaration ::= CLASS IDENT:ClassName ExtendsOpt LCURLYBRACE VariableDeclarationWrapper ClassBody RCURLYBRACE;
 ExtendsOpt ::= EXTENDS Type | /* epsilon */;
 ClassBody ::= MethodDeclarationListOpt;
 
 MethodDeclarationListOpt ::= MethodDeclarationListOpt MethodDeclaration | /* epsilon */;
-MethodDeclaration ::= StaticOpt MethodReturnType IDENT:MethodName 
+MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper.setCurrentTypeDeclaration(TypeName); :} //Potrebna povratna vrednost za ubacivanje niza u tabelu simbola
+						IDENT:MethodName 
 					{: 
 						if(MethodName.equals("main"))
 							parser.parserHelper.enteringMain();
+
+						Obj temp = Tab.find(MethodName);
+						if(temp == Tab.noObj)
+						{
+							parser.report_info("Method "+ MethodName+" declared on line "+ MethodNameleft, null);
+							Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+						} else if (temp.getKind() != Obj.Meth) {
+							parser.report_info("Method "+ MethodName+" declared on line (has same name as a var/const)"+ MethodNameleft, null);
+							Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+						} else {
+							parser.report_error("A constant or a variable with the same name as " + MethodName + " is already defined!", null);
+						}
+						
+						parser.parserHelper.setCurrentTypeDeclaration(null);
 					:} 
 					LPAREN FormalParamListOpt RPAREN VariableDeclarationWrapperListOpt
 					{: parser.parserHelper.exitingMain(); :}
 					LCURLYBRACE StatementListOpt RCURLYBRACE;
 StaticOpt ::= STATIC | /* epsilon */;
-MethodReturnType ::= VOID | Type;
+MethodReturnType ::= VOID {: RESULT = Tab.noObj; :}
+					|
+					Type:TypeName {: RESULT = TypeName; :};
 FormalParamListOpt ::= FormalParamList | /* epsilon */;
 FormalParamList ::= FormalParamList COMMA FormalParam | FormalParam;
 FormalParam ::= Type IDENT:ParamName | Type IDENT:ParamName LINDEX RINDEX;
 
 VariableDeclarationWrapperListOpt ::= VariableDeclarationWrapperListOpt VariableDeclarationWrapper | /* epsilon */;
-VariableDeclarationWrapper ::= Type VariableDeclarationList SEMICOLON;
+VariableDeclarationWrapper ::= Type:TypeName {: parser.parserHelper.setCurrentTypeDeclaration(TypeName); :} //Potrebno za ubacivanje promenljivih iz liste u tabelu simbola 
+								VariableDeclarationList SEMICOLON {: parser.parserHelper.setCurrentTypeDeclaration(null); :};
 VariableDeclarationList ::= VariableDeclarationList COMMA VariableDeclaration | VariableDeclaration;
 VariableDeclaration ::= IDENT:VarName 
 						{:
@@ -105,14 +173,39 @@ VariableDeclaration ::= IDENT:VarName
 								parser.parserHelper.globalVarFound();
 							else if(parser.parserHelper.isInMain())
 								parser.parserHelper.localVarFound();
+
+							if(!parser.parserHelper.isInProgram())
+								parser.parserHelper.globalConstFound();
+							
+							Obj temp = Tab.find(VarName);
+							if(temp == Tab.noObj) {
+								parser.report_info("Variable "+ VarName +" declared on line "+ VarNameleft, null);
+								Tab.insert(Obj.Var, VarName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+							} else if (temp.getKind() == Obj.Meth) {
+								parser.report_info("Variable "+ VarName +" declared on line (has same name as a method)"+ VarNameleft, null);
+								Tab.insert(Obj.Var, VarName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+							} else {
+								parser.report_error("A constant or a variable with the same name as " + VarName + " is already defined!", null);
+							}
 						:}
 						| IDENT:VarName LINDEX RINDEX
 						{:
 							if(!parser.parserHelper.isInProgram())
 								parser.parserHelper.globalArrayFound();
+
+							Obj temp = Tab.find(VarName);
+							if(temp == Tab.noObj) {
+								parser.report_info("Array "+ VarName +" declared on line "+ VarNameleft, null);
+								Tab.insert(Obj.Var, VarName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+							} else if (temp.getKind() == Obj.Meth) {
+								parser.report_info("Array "+ VarName +" declared on line (has same name as a method)"+ VarNameleft, null);
+								Tab.insert(Obj.Var, VarName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+							} else {
+								parser.report_error("A constant or a variable with the same name as " + VarName + " is already defined!", null);
+							}
 						:};
 
-Type ::= IDENT:TypeName;
+Type ::= IDENT:TypeName {: RESULT = parser.parserHelper.typeNameToObj(TypeName); :};
 
 Statement ::= DesignatorStatement SEMICOLON
 				| IfStatement

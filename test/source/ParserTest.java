@@ -11,6 +11,7 @@ import java_cup.runtime.Symbol;
 import org.apache.log4j.Logger;
 import org.apache.log4j.xml.DOMConfigurator;
 
+import rs.etf.pp1.symboltable.Tab;
 import util.Log4JUtils;
 
 public class ParserTest {
@@ -37,6 +38,8 @@ public class ParserTest {
 	        
 	        //Ovde ide ispis
 	        System.out.println(p.parserHelper.printParseCount());
+	        Tab.dump();
+	        System.out.println("Dump complete.");
 		} 
 		finally {
 			if (br != null) try { br.close(); } catch (IOException e1) { log.error(e1.getMessage(), e1); }
