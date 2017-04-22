@@ -1,5 +1,7 @@
 package util;
 
+import java.util.*;
+
 import rs.etf.pp1.symboltable.Tab;
 import rs.etf.pp1.symboltable.concepts.Obj;
 import rs.etf.pp1.symboltable.concepts.Struct;
@@ -15,7 +17,33 @@ public class ParserHelper {
 	private int globalConstCnt = 0;
 	private int globalArrayCnt = 0;
 	private Obj currentTypeDeclaration = null;
+	private boolean mainFunctionDefined = false;
+	private boolean errorDetected = false;
 
+	public Stack<Obj> currentScopeStack = new Stack<>();
+	public List<Obj> formalParamList = new ArrayList<>();
+	public Stack<Obj> methodInvocationStack = new Stack<>();
+	public Stack<Integer> formalParameterPositionStack = new Stack<>();
+
+	public Obj getFormalParamType()
+	{
+		int paramNumber = formalParameterPositionStack.pop();
+		formalParameterPositionStack.push(paramNumber + 1);
+		Obj currentMethod = methodInvocationStack.peek();
+
+		Collection<Obj> methodLocals = currentMethod.getLocalSymbols();
+		for(Obj cur : methodLocals)
+		{
+			if(cur.getFpPos() == paramNumber)
+				return cur;
+		}
+		return Tab.noObj;
+	}
+
+	public void errorDetected() { errorDetected = true; }
+
+	public boolean isErrorDetected() { return errorDetected; }
+	
 	public ParserHelper(MJParser myParser) {
 		parser = myParser;
 	}
@@ -32,7 +60,7 @@ public class ParserHelper {
 			return temp;
 		}
 	}
-	
+
 	public Obj getCurrentTypeDeclaration() {
 		return currentTypeDeclaration;
 	}
@@ -49,8 +77,13 @@ public class ParserHelper {
 	public void enteringProgram() { inProgram = true; }
 	public void exitingProgram() { inProgram = false; }
 	
-	public void enteringMain() { inMain = true; }
+	public void enteringMain() { 
+		inMain = true;
+		mainFunctionDefined = true;
+	}
 	public void exitingMain() { inMain = false; }
+
+	public boolean isMainDefined() { return mainFunctionDefined; }
 
 	public void globalVarFound() { globalVarCnt++; }
 	public void localVarFound() { localVarCnt++; }

@@ -17,14 +17,17 @@ parser code {:
     }
   
     public void syntax_error(Symbol cur_token) {
+    	parserHelper.errorDetected();
         report_error("\nSintaksna greska", cur_token);
     }
   
     public void unrecovered_syntax_error(Symbol cur_token) throws java.lang.Exception {
+    	parserHelper.errorDetected();
         report_fatal_error("Fatalna greska, parsiranje se ne moze nastaviti", cur_token);
     }
 
     public void report_error(String message, Object info) {
+    	parserHelper.errorDetected();
     	StringBuilder msg = new StringBuilder(message); 
     	if (info instanceof Symbol)
             msg.append (" na liniji ").append(((Symbol)info).left);
@@ -68,25 +71,45 @@ non terminal Obj Type;
 non terminal ConstantDeclarationList, ConstantDeclaration;
 non terminal Obj Constant;
 non terminal ExtendsOpt, ClassBody;
-non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt, FormalParamListOpt, 
-		FormalParamList, FormalParam;
+non terminal MethodDeclarationListOpt, MethodDeclaration, StaticOpt;
+non terminal Obj FormalParam;
+non terminal FormalParamListOpt, FormalParamList;
 non terminal Obj MethodReturnType;
 non terminal StatementListOpt, StatementList;
 non terminal VariableDeclarationWrapperListOpt, VariableDeclarationList, VariableDeclaration;
 non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
-non terminal Designator, DesignatorOperation, AssignOperator;
+non terminal Obj Designator;
+non terminal DesignatorOperation, AssignOperator;
 non terminal AddOpRight, MulOpRight, AddOpLeft, MulOpLeft; 
-non terminal ActualParamListOpt, ActualParamList, ExpressionList;
-non terminal Expression, MinusOpt;
-non terminal TermList, Term, AddOp, FactorList, Factor, MulOp;
-non terminal FunctionCall, ConstructorCall;
-non terminal ObjectPropertyRef, ArrayElemRef, IndexingList;
+non terminal Integer ExpressionList;
+non terminal Integer ActualParamListOpt, ActualParamList;
+non terminal Obj Expression;
+non terminal Integer MinusOpt;
+non terminal Obj TermList, Term, FactorList, Factor;
+non terminal AddOp, MulOp;
+non terminal Obj FunctionCall, ConstructorCall;
+non terminal Obj ObjectPropertyRef, ArrayElemRef, IndexingList;
 non terminal Condition, ElseOpt, ConditionTermList, ConditionTerm, ConditionFactorList, ConditionFactor, Relop;
-non terminal DesignatorStatementOpt, ConditionOpt, ExpressionOpt, NumConstOpt, IndexingExpressionOpt;
+non terminal Obj DesignatorStatementOpt, ConditionOpt, ExpressionOpt, NumConstOpt, IndexingExpressionOpt;
 
 precedence left ELSE;
 
-Program ::= PROGRAM IDENT:ProgramName ProgramDeclarationListOpt LCURLYBRACE {: parser.parserHelper.enteringProgram(); :} ProgramBody {: parser.parserHelper.exitingProgram(); :} RCURLYBRACE;
+Program ::= PROGRAM IDENT:ProgramName
+			{: 
+				parser.parserHelper.currentScopeStack.push(Tab.insert(Obj.Prog, ProgramName, Tab.noType));
+				Tab.openScope();
+			:}
+			 ProgramDeclarationListOpt LCURLYBRACE {: parser.parserHelper.enteringProgram(); :} ProgramBody 
+			{:
+				parser.parserHelper.exitingProgram();
+				Tab.chainLocalSymbols(parser.parserHelper.currentScopeStack.pop());
+				Tab.closeScope();
+				if(!parser.parserHelper.isMainDefined())
+					parser.report_error("Main function not found!", null);
+			:} 
+			RCURLYBRACE;
+
+
 ProgramDeclarationListOpt ::=  ProgramDeclarationListOpt ConcreteProgramDeclarations | /* epsilon */;
 ConcreteProgramDeclarations ::= ConstantDeclarationWrapper | ClassDeclaration | VariableDeclarationWrapper;
 ProgramBody ::= MethodDeclarationListOpt;
@@ -135,33 +158,64 @@ MethodDeclarationListOpt ::= MethodDeclarationListOpt MethodDeclaration | /* eps
 MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper.setCurrentTypeDeclaration(TypeName); :} //Potrebna povratna vrednost za ubacivanje niza u tabelu simbola
 						IDENT:MethodName 
 					{: 
-						if(MethodName.equals("main"))
+						if(MethodName.equals("main")){
 							parser.parserHelper.enteringMain();
+							if(parser.parserHelper.getCurrentTypeDeclaration() != Tab.noObj)
+								parser.report_error("Main function must have a void return type.", null);
+						}
 
 						Obj temp = Tab.find(MethodName);
 						if(temp == Tab.noObj)
 						{
 							parser.report_info("Method "+ MethodName+" declared on line "+ MethodNameleft, null);
-							Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+							parser.parserHelper.currentScopeStack.push(Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType()));
+							Tab.openScope();
 						} else if (temp.getKind() != Obj.Meth) {
 							parser.report_info("Method "+ MethodName+" declared on line (has same name as a var/const)"+ MethodNameleft, null);
-							Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+							parser.parserHelper.currentScopeStack.push(Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType()));
+							Tab.openScope();
 						} else {
 							parser.report_error("A constant or a variable with the same name as " + MethodName + " is already defined!", null);
 						}
 						
 						parser.parserHelper.setCurrentTypeDeclaration(null);
 					:} 
-					LPAREN FormalParamListOpt RPAREN VariableDeclarationWrapperListOpt
-					{: parser.parserHelper.exitingMain(); :}
-					LCURLYBRACE StatementListOpt RCURLYBRACE;
+					LPAREN FormalParamListOpt:FormalParams
+					{:
+						if(parser.parserHelper.isInMain() && parser.parserHelper.formalParamList.size() > 0)
+							parser.report_error("Main function must have zero arguments", null);
+
+						int formalParamPosition = 1;
+						for(Obj cur : parser.parserHelper.formalParamList)
+						{
+							Obj formalParamObj = Tab.insert(cur.getKind(), cur.getName(), cur.getType());
+							formalParamObj.setFpPos(formalParamPosition++);	//fpPos mozda treba da krece od 0. U tom slucaju, ++formalParamPosition
+						}
+						Tab.find(MethodName).setLevel(parser.parserHelper.formalParamList.size());
+						parser.parserHelper.formalParamList.clear();
+					:}
+					RPAREN VariableDeclarationWrapperListOpt
+					LCURLYBRACE StatementListOpt RCURLYBRACE
+					{:
+						parser.parserHelper.exitingMain();
+						Tab.chainLocalSymbols(parser.parserHelper.currentScopeStack.pop());
+						Tab.closeScope();
+					:};
 StaticOpt ::= STATIC | /* epsilon */;
 MethodReturnType ::= VOID {: RESULT = Tab.noObj; :}
 					|
 					Type:TypeName {: RESULT = TypeName; :};
 FormalParamListOpt ::= FormalParamList | /* epsilon */;
 FormalParamList ::= FormalParamList COMMA FormalParam | FormalParam;
-FormalParam ::= Type IDENT:ParamName | Type IDENT:ParamName LINDEX RINDEX;
+FormalParam ::= Type:ParamType IDENT:ParamName
+				{:
+					parser.parserHelper.formalParamList.add(new Obj(Obj.Var, ParamName, ParamType.getType()));
+				:}
+				|
+				Type:ParamType IDENT:ParamName LINDEX RINDEX
+				{:
+					parser.parserHelper.formalParamList.add(new Obj(Obj.Var, ParamName, new Struct(Struct.Array, ParamType.getType())));	
+				:};
 
 VariableDeclarationWrapperListOpt ::= VariableDeclarationWrapperListOpt VariableDeclarationWrapper | /* epsilon */;
 VariableDeclarationWrapper ::= Type:TypeName {: parser.parserHelper.setCurrentTypeDeclaration(TypeName); :} //Potrebno za ubacivanje promenljivih iz liste u tabelu simbola 
@@ -196,10 +250,10 @@ VariableDeclaration ::= IDENT:VarName
 							Obj temp = Tab.find(VarName);
 							if(temp == Tab.noObj) {
 								parser.report_info("Array "+ VarName +" declared on line "+ VarNameleft, null);
-								Tab.insert(Obj.Var, VarName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+								Tab.insert(Obj.Var, VarName, new Struct(Struct.Array, parser.parserHelper.getCurrentTypeDeclaration().getType()));
 							} else if (temp.getKind() == Obj.Meth) {
 								parser.report_info("Array "+ VarName +" declared on line (has same name as a method)"+ VarNameleft, null);
-								Tab.insert(Obj.Var, VarName, parser.parserHelper.getCurrentTypeDeclaration().getType());
+								Tab.insert(Obj.Var, VarName, new Struct(Struct.Array, parser.parserHelper.getCurrentTypeDeclaration().getType()));
 							} else {
 								parser.report_error("A constant or a variable with the same name as " + VarName + " is already defined!", null);
 							}
@@ -221,40 +275,131 @@ StatementListOpt ::= StatementList | /* epsilon */;
 StatementList ::= StatementList Statement | Statement;
 
 DesignatorStatementOpt ::= DesignatorStatement | /* epsilon */;
-DesignatorStatement ::= Designator DesignatorOperation;
-DesignatorOperation ::= AssignOperator Expression | LPAREN ActualParamListOpt RPAREN | INCREMENT | DECREMENT;
+DesignatorStatement ::= Designator DesignatorOperation | FunctionCall;
+DesignatorOperation ::= AssignOperator Expression | INCREMENT | DECREMENT;
 AssignOperator ::= ASSIGN | AddOpRight | MulOpRight;
 AddOpRight ::= PLUSASSIGN | MINUSASSIGN;
 MulOpRight ::= MULASSIGN | DIVASSIGN | MODASSIGN;
-ActualParamListOpt ::= ActualParamList | /* epsilon */;
-ActualParamList ::= ExpressionList;
-ExpressionList ::= ExpressionList COMMA Expression | Expression;
+ActualParamListOpt ::= ActualParamList:ParamNumber
+						{: RESULT = ParamNumber; :}
+						|
+						/* epsilon */
+						{: RESULT = 0; :};
+						
+ActualParamList ::= ExpressionList:ExprNumber
+					{: RESULT = ExprNumber; :};
+
+ExpressionList ::= ExpressionList:ParamNumber COMMA Expression:Expr 
+					{:
+						Obj formalParamType = parser.parserHelper.getFormalParamType();
+						if(formalParamType.getType() != Expr.getType())
+							parser.report_error("Incompatible types at line " + Exprleft, null);
+						RESULT = ParamNumber + 1; 
+					:}
+					|
+					Expression:Expr
+					{: 
+						Obj formalParamType = parser.parserHelper.getFormalParamType();
+						if(formalParamType.getType() != Expr.getType())
+							parser.report_error("Incompatible types at line " + Exprleft, null);
+						RESULT = 1;
+					:};
 
 ExpressionOpt ::= Expression | /* epsilon */;
-Expression ::= MinusOpt TermList;
-MinusOpt ::= MINUS | /* epsilon */;
-TermList ::= TermList AddOp Term | Term;
-Term ::= FactorList;
-FactorList ::= FactorList MulOp Factor | Factor;
-Factor ::= Designator
-			| FunctionCall
-			| NUMCONST
-			| CHARCONST
-			| BOOLCONST
+Expression ::= MinusOpt:Minus TermList:TermList
+				{:
+					if(Minus == -1 && TermList.getType() != Tab.intType)
+						parser.report_error("Minus modifier can only be user with integers! (Line " + Minusleft + ")", null);
+					RESULT = TermList;
+				:};
+
+MinusOpt ::= MINUS
+			{:
+				RESULT = new Integer(-1);
+			:}
+			| /* epsilon */
+			{:
+				RESULT = new Integer(1);
+			:};
+
+TermList ::= TermList:TermList AddOp Term:Term
+				{:
+					if(TermList.getType() != Tab.intType || Term.getType() != Tab.intType)
+						parser.report_error("Addition operations only available with int types! (line " + Termleft + ")", null);
+					RESULT = Term;
+				:} 
+				|
+				Term:Term
+				{:
+					RESULT = Term;
+				:};
+Term ::= FactorList:FactList
+		{: RESULT = FactList; :};
+FactorList ::= FactorList:FactList MulOp Factor:Factor
+				{:
+					if(FactList.getType() != Tab.intType || Factor.getType() != Tab.intType)
+						parser.report_error("Multiplication operations only available with int types! (line " + Factorleft + ")", null);
+					RESULT = Factor;
+				:}
+				|
+				Factor:Factor
+				{:
+					RESULT = Factor;
+				:};
+Factor ::= Designator:DesignatorObj
+			{: RESULT = DesignatorObj; :}
+			| FunctionCall:FunctionCall
+			{: RESULT = FunctionCall; :}
+			| NUMCONST:Num
+			{:
+				RESULT = parser.parserHelper.evaluateNumConst(Num);
+			:}
+			| CHARCONST:Char
+			{:
+				RESULT = parser.parserHelper.evaluateCharConst(Char);
+			:}
+			| BOOLCONST:Bool
+			{:
+				RESULT = parser.parserHelper.evaluateBoolConst(Bool);
+			:}
 			| ConstructorCall
-			| LPAREN Expression RPAREN;
+			| LPAREN Expression:ExpressionObj RPAREN
+			{: RESULT = ExpressionObj; :};
 
 AddOp ::= AddOpLeft | AddOpRight;
 AddOpLeft ::= PLUS | MINUS;
 MulOp ::= MulOpLeft | MulOpRight;
 MulOpLeft ::= MUL | DIV | MOD;
 
-
-
-Designator ::= IDENT:VarName | ObjectPropertyRef | ArrayElemRef;
-ObjectPropertyRef ::= Designator DOT IDENT:propertyName;
-ArrayElemRef ::= Designator IndexingList;
-IndexingList ::= LINDEX Expression:IndexingExpression RINDEX;
+Designator ::= IDENT:VarName
+				{:
+					Obj var = Tab.find(VarName);
+					if(var == Tab.noObj || (var.getKind() != Obj.Var && var.getKind() != Obj.Con && var.getKind() != Obj.Meth))
+						parser.report_error("Name " + VarName + " incorrectly used or not found on line " + VarNameleft, null);
+					RESULT = var;
+				:}
+				| ObjectPropertyRef 
+				| ArrayElemRef:ArrayObj
+				{: RESULT = ArrayObj; :};
+ObjectPropertyRef ::= Designator DOT IDENT:propertyName
+						{:
+							parser.report_error("Classes and objects have not been implemented!", null);
+						:};
+ArrayElemRef ::= Designator:ArrayObj
+					{:
+						if(ArrayObj == Tab.noObj || ArrayObj.getKind() != Obj.Var || ArrayObj.getType().getKind() != Struct.Array)
+							parser.report_error("Name " + ArrayObj.getName() + " incorrectly used or not found on line " + ArrayObjleft, null);
+					:}
+					IndexingList:Index
+					{:
+						if(Index == Tab.noObj || Index.getType().getKind() != Struct.Int)
+							parser.report_error("Indexing expression of an array must return an integer! (line " + ArrayObjleft + ")", null);
+						RESULT = new Obj(Obj.Elem, "ArrayElem", ArrayObj.getType().getElemType());
+					:};
+IndexingList ::= LINDEX Expression:IndexingExpression RINDEX
+					{:
+						RESULT = IndexingExpression;
+					:};
 
 IfStatement ::= IF LPAREN Condition RPAREN Statement ElseOpt;
 ElseOpt ::= ELSE Statement | /* epsilon */;
@@ -276,7 +421,22 @@ ReadStatement ::= READ LPAREN Designator RPAREN;
 PrintStatement ::= PRINT LPAREN Expression NumConstOpt RPAREN;
 NumConstOpt ::= COMMA NUMCONST | /* epsilon */;
 
-FunctionCall ::= Designator:FunctionName LPAREN ActualParamListOpt RPAREN;
+FunctionCall ::= Designator:FunctionObj
+				{:
+					System.out.println("Usao u pravu smenu.");
+					if(FunctionObj == Tab.noObj || FunctionObj.getKind() != Obj.Meth)
+						parser.report_error(FunctionObj.getName() + " is not a method! (line "+ FunctionObjleft + ")", null);
+					parser.parserHelper.methodInvocationStack.push(FunctionObj);
+					parser.parserHelper.formalParameterPositionStack.push(1);
+				:}
+				LPAREN ActualParamListOpt:ParamNumber RPAREN
+				{:
+					Obj functionObj = parser.parserHelper.methodInvocationStack.pop();
+					parser.parserHelper.formalParameterPositionStack.pop();
+					if(ParamNumber != functionObj.getLevel())
+						parser.report_error("Parameter number mismatch at line " + ParamNumberleft, null);
+					RESULT = functionObj;
+				:};
 ConstructorCall ::= NEW Type:ClassName IndexingExpressionOpt;
 IndexingExpressionOpt ::= LINDEX Expression RINDEX;
 

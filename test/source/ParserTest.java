@@ -12,6 +12,7 @@ import org.apache.log4j.Logger;
 import org.apache.log4j.xml.DOMConfigurator;
 
 import rs.etf.pp1.symboltable.Tab;
+import util.DetailedDumpSymbolTableVisitor;
 import util.Log4JUtils;
 
 public class ParserTest {
@@ -37,8 +38,12 @@ public class ParserTest {
 	        p.parse();  //pocetak parsiranja
 	        
 	        //Ovde ide ispis
+	        if(p.parserHelper.isErrorDetected())
+	        {
+	        	System.out.println("GRESKA!");
+	        }
 	        System.out.println(p.parserHelper.printParseCount());
-	        Tab.dump();
+	        Tab.dump(new DetailedDumpSymbolTableVisitor());
 	        System.out.println("Dump complete.");
 		} 
 		finally {
