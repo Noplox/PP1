@@ -79,14 +79,15 @@ non terminal StatementListOpt, StatementList;
 non terminal VariableDeclarationWrapperListOpt, VariableDeclarationList, VariableDeclaration;
 non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
 non terminal Obj Designator;
-non terminal DesignatorOperation, AssignOperator;
+non terminal Obj DesignatorOperation;
+non terminal AssignOperator;
 non terminal AddOpRight, MulOpRight, AddOpLeft, MulOpLeft; 
 non terminal Integer ExpressionList;
 non terminal Integer ActualParamListOpt, ActualParamList;
 non terminal Obj Expression;
 non terminal Integer MinusOpt;
 non terminal Obj TermList, Term, FactorList, Factor;
-non terminal AddOp, MulOp;
+non terminal Boolean AddOp, MulOp;
 non terminal Obj FunctionCall, ConstructorCall;
 non terminal Obj ObjectPropertyRef, ArrayElemRef, IndexingList;
 non terminal Condition, ElseOpt, ConditionTermList, ConditionTerm, ConditionFactorList, ConditionFactor, Relop;
@@ -189,7 +190,7 @@ MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper
 						for(Obj cur : parser.parserHelper.formalParamList)
 						{
 							Obj formalParamObj = Tab.insert(cur.getKind(), cur.getName(), cur.getType());
-							formalParamObj.setFpPos(formalParamPosition++);	//fpPos mozda treba da krece od 0. U tom slucaju, ++formalParamPosition
+							formalParamObj.setFpPos(formalParamPosition++);
 						}
 						Tab.find(MethodName).setLevel(parser.parserHelper.formalParamList.size());
 						parser.parserHelper.formalParamList.clear();
@@ -197,14 +198,29 @@ MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper
 					RPAREN VariableDeclarationWrapperListOpt
 					LCURLYBRACE StatementListOpt RCURLYBRACE
 					{:
+						if(parser.parserHelper.getMethodReturnType() != Tab.noObj && !parser.parserHelper.isReturnFound())
+							parser.report_error("Method " + MethodName + " missing a return statement of type "+ parser.parserHelper.getMethodReturnType() + " (line " + MethodNameleft + ")", null);
 						parser.parserHelper.exitingMain();
 						Tab.chainLocalSymbols(parser.parserHelper.currentScopeStack.pop());
 						Tab.closeScope();
 					:};
-StaticOpt ::= STATIC | /* epsilon */;
-MethodReturnType ::= VOID {: RESULT = Tab.noObj; :}
+StaticOpt ::= STATIC:Static
+				{:
+					parser.report_error("Static modifier not allowed for global functions. Classes not supported (line " + Staticleft + ")", null);
+				:}
+				| /* epsilon */;
+
+MethodReturnType ::= VOID 
+					{:
+						parser.parserHelper.setMethodReturnType(Tab.noObj);
+						RESULT = Tab.noObj; 
+					:}
 					|
-					Type:TypeName {: RESULT = TypeName; :};
+					Type:TypeName
+					{:
+						parser.parserHelper.setMethodReturnType(TypeName);
+						RESULT = TypeName;
+					:};
 FormalParamListOpt ::= FormalParamList | /* epsilon */;
 FormalParamList ::= FormalParamList COMMA FormalParam | FormalParam;
 FormalParam ::= Type:ParamType IDENT:ParamName
@@ -275,8 +291,27 @@ StatementListOpt ::= StatementList | /* epsilon */;
 StatementList ::= StatementList Statement | Statement;
 
 DesignatorStatementOpt ::= DesignatorStatement | /* epsilon */;
-DesignatorStatement ::= Designator DesignatorOperation | FunctionCall;
-DesignatorOperation ::= AssignOperator Expression | INCREMENT | DECREMENT;
+DesignatorStatement ::= Designator:Designator DesignatorOperation:DesignatorOp
+						{:
+							if(!Designator.getType().assignableTo(DesignatorOp.getType()))
+								parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+						:}
+						|
+						FunctionCall;
+DesignatorOperation ::= AssignOperator Expression:Expr
+						{:
+							RESULT = Expr;
+						:}
+						|
+						INCREMENT
+						{:
+							RESULT = new Obj(Obj.Con, "inc", Tab.intType);
+						:}
+						|
+						DECREMENT
+						{:
+							RESULT = new Obj(Obj.Con, "inc", Tab.intType);
+						:};
 AssignOperator ::= ASSIGN | AddOpRight | MulOpRight;
 AddOpRight ::= PLUSASSIGN | MINUSASSIGN;
 MulOpRight ::= MULASSIGN | DIVASSIGN | MODASSIGN;
@@ -292,20 +327,29 @@ ActualParamList ::= ExpressionList:ExprNumber
 ExpressionList ::= ExpressionList:ParamNumber COMMA Expression:Expr 
 					{:
 						Obj formalParamType = parser.parserHelper.getFormalParamType();
-						if(formalParamType.getType() != Expr.getType())
-							parser.report_error("Incompatible types at line " + Exprleft, null);
+
+						if(!Expr.getType().assignableTo(formalParamType.getType()))
+							parser.report_error("Incompatible types at line " + Exprleft + " Found " + parser.parserHelper.objToString(Expr) + " expected " + parser.parserHelper.objToString(formalParamType), null);
 						RESULT = ParamNumber + 1; 
 					:}
 					|
 					Expression:Expr
 					{: 
 						Obj formalParamType = parser.parserHelper.getFormalParamType();
-						if(formalParamType.getType() != Expr.getType())
-							parser.report_error("Incompatible types at line " + Exprleft, null);
+						if(!Expr.getType().assignableTo(formalParamType.getType()))
+							parser.report_error("Incompatible types at line " + Exprleft + " Found " + parser.parserHelper.objToString(Expr) + " expected " + parser.parserHelper.objToString(formalParamType), null);
 						RESULT = 1;
 					:};
 
-ExpressionOpt ::= Expression | /* epsilon */;
+ExpressionOpt ::= Expression:Expr
+					{:
+						RESULT = Expr;
+					:}
+					|
+					/* epsilon */
+					{:
+						RESULT = Tab.noObj;
+					:};
 Expression ::= MinusOpt:Minus TermList:TermList
 				{:
 					if(Minus == -1 && TermList.getType() != Tab.intType)
@@ -322,12 +366,15 @@ MinusOpt ::= MINUS
 				RESULT = new Integer(1);
 			:};
 
-TermList ::= TermList:TermList AddOp Term:Term
+TermList ::= TermList:TermList AddOp:IsCombinedOperator Term:Term
 				{:
 					if(TermList.getType() != Tab.intType || Term.getType() != Tab.intType)
 						parser.report_error("Addition operations only available with int types! (line " + Termleft + ")", null);
+					if(IsCombinedOperator && (TermList.getKind() != Obj.Elem && (TermList.getKind() != Obj.Var || (TermList.getKind() == Obj.Var && TermList.getType().getKind() == Struct.Array))))
+						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Termleft + ")\n" + parser.parserHelper.objToString(TermList), null);
+
 					RESULT = Term;
-				:} 
+				:}
 				|
 				Term:Term
 				{:
@@ -335,10 +382,12 @@ TermList ::= TermList:TermList AddOp Term:Term
 				:};
 Term ::= FactorList:FactList
 		{: RESULT = FactList; :};
-FactorList ::= FactorList:FactList MulOp Factor:Factor
+FactorList ::= FactorList:FactList MulOp:IsCombinedOperator Factor:Factor
 				{:
 					if(FactList.getType() != Tab.intType || Factor.getType() != Tab.intType)
 						parser.report_error("Multiplication operations only available with int types! (line " + Factorleft + ")", null);
+					if(IsCombinedOperator && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
+						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Factorleft + ")\n" + parser.parserHelper.objToString(FactList), null);
 					RESULT = Factor;
 				:}
 				|
@@ -362,13 +411,24 @@ Factor ::= Designator:DesignatorObj
 			{:
 				RESULT = parser.parserHelper.evaluateBoolConst(Bool);
 			:}
-			| ConstructorCall
+			| ConstructorCall:ArrayType
+			{:
+				RESULT = ArrayType;
+			:}
 			| LPAREN Expression:ExpressionObj RPAREN
 			{: RESULT = ExpressionObj; :};
 
-AddOp ::= AddOpLeft | AddOpRight;
+AddOp ::= AddOpLeft
+			{: RESULT = false; :}
+			|
+			AddOpRight
+			{: RESULT = true; :};
 AddOpLeft ::= PLUS | MINUS;
-MulOp ::= MulOpLeft | MulOpRight;
+MulOp ::= MulOpLeft
+			{: RESULT = false; :}
+			|
+			MulOpRight
+			{: RESULT = true; :};
 MulOpLeft ::= MUL | DIV | MOD;
 
 Designator ::= IDENT:VarName
@@ -414,11 +474,25 @@ Relop ::= EQU | NOTEQU | GT | GTEQU | LE | LEQU;
 
 ForStatement ::= FOR LPAREN DesignatorStatementOpt SEMICOLON ConditionOpt SEMICOLON DesignatorStatementOpt RPAREN Statement;
 
-ReturnStatement ::= RETURN ExpressionOpt;
+ReturnStatement ::= RETURN ExpressionOpt:RetExpr
+					{:
+						if(!RetExpr.getType().assignableTo(parser.parserHelper.getMethodReturnType().getType()))
+							parser.report_error("Incompatible types at return statement. (line " + RetExprleft + ")", null);
 
-ReadStatement ::= READ LPAREN Designator RPAREN;
+						parser.parserHelper.setReturnFound(true);
+					:};
 
-PrintStatement ::= PRINT LPAREN Expression NumConstOpt RPAREN;
+ReadStatement ::= READ LPAREN Designator:Designator RPAREN
+					{:
+						if(Designator.getType().getKind() != Struct.Int && Designator.getType().getKind() != Struct.Char && Designator.getType().getKind() != Struct.Bool)
+							parser.report_error("Read statement can only read int char or bool types (line "+ Designatorleft + ")", null);
+					:};
+
+PrintStatement ::= PRINT LPAREN Expression:Expr NumConstOpt RPAREN
+					{:
+						if(Expr.getType().getKind() != Struct.Int && Expr.getType().getKind() != Struct.Char && Expr.getType().getKind() != Struct.Bool)
+							parser.report_error("Print statement can only read int char or bool types (line "+ Exprleft + ")", null);
+					:};
 NumConstOpt ::= COMMA NUMCONST | /* epsilon */;
 
 FunctionCall ::= Designator:FunctionObj
@@ -436,32 +510,19 @@ FunctionCall ::= Designator:FunctionObj
 						parser.report_error("Parameter number mismatch at line " + ParamNumberleft, null);
 					RESULT = functionObj;
 				:};
-ConstructorCall ::= NEW Type:ClassName IndexingExpressionOpt;
-IndexingExpressionOpt ::= LINDEX Expression RINDEX;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-		
+ConstructorCall ::= NEW Type:ArrayType IndexingExpressionOpt:IndexExpr
+					{:
+						if(IndexExpr.getType().getKind() != Struct.Int)
+							parser.report_error("Constructor indexing expression must return an integer. (line " + IndexExprleft + ")", null);
+						RESULT = new Obj(Obj.Var, "TempArray", new Struct(Struct.Array, ArrayType.getType()));
+					:};
+IndexingExpressionOpt ::= LINDEX Expression:IndexExpr RINDEX 
+						{:
+							RESULT = IndexExpr;
+						:}
+						|
+						/* epsilon */
+						{:
+							parser.report_error("Operator new must construct an array. Classes not supported." , null);
+							RESULT = Tab.noObj;
+						:};

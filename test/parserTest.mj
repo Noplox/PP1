@@ -1,28 +1,57 @@
 program Prog
-	const int jedan = 50;
+	const int jedan = 5;
 	int niz[], t[];
 	const bool prviBool = true;
 	int prom;
 	int broj;
-	
+	char character;
+	bool flag;
 {
 	int funkcija(int a, int b) {
 		a = a + b;
 		print(45);
 		//_loseimezafunkciju();
+		return 5;
 	}
 	
-	int drugaF(int a, char b){}
+	int drugaF(int a, char b){
+		return a + broj;
+	}
+	
+	int funkcijaSaNizom(int a[])
+	{
+		return a[5];
+	}
+	
+	int fNoParam(){
+		return 5;
+	}
+	
+	void voidF(){}
 	
 	void main() int a; int b, c; int drugiNiz[]; {
+		niz = new int[5];
+		read(niz[1]);
+		read(character);
+		read(flag);
+		print(niz[1]);
+		print(character);
+		print(flag);
+		a = a += b *= c *= niz[b+=5] += 3;
+		niz[1]++;
+		niz[2]--;
+		funkcijaSaNizom(niz);
 		a = broj;
-		print(broj);
+		niz[1] = 5;
+		niz[3] = broj *= 2;
+		//a = voidF() + 5;
+		character = 'a';
 		funkcija(a, b);
-		return broj;
 		b = niz[2];
 		b = niz[niz[7 * 2 - (drugiNiz[2] % 4)]];
 		c = funkcija(drugaF(2, 'a'), 2);
-		c = funkcija();
-		c = drugaF(2, 'a', 3, 6, 4);
+		c = len(niz);
+		//c = funkcija();
+		//c = drugaF(2, 'a', 3, 6, 4);
 	}
 }

@@ -38,13 +38,14 @@ public class ParserTest {
 	        p.parse();  //pocetak parsiranja
 	        
 	        //Ovde ide ispis
+	        
+	        System.out.println(p.parserHelper.printParseCount());
+	        Tab.dump(new DetailedDumpSymbolTableVisitor());
+	        System.out.println("Dump complete.");
 	        if(p.parserHelper.isErrorDetected())
 	        {
 	        	System.out.println("GRESKA!");
 	        }
-	        System.out.println(p.parserHelper.printParseCount());
-	        Tab.dump(new DetailedDumpSymbolTableVisitor());
-	        System.out.println("Dump complete.");
 		} 
 		finally {
 			if (br != null) try { br.close(); } catch (IOException e1) { log.error(e1.getMessage(), e1); }
