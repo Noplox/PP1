@@ -9,8 +9,11 @@ import source.MJParser;
 
 public class ParserHelper {
 
+	public static final int ASSIGN = 0, PLUSASSIGN = 1, MINUSASSIGN = 2, MULASSIGN = 3, DIVASSIGN = 4, MODASSIGN = 5;
+
 	private MJParser parser;
 	public Struct boolType;
+	public Obj designatorStatementDesignator;
 
 	private int globalVarCnt = 0;
 	private int localVarCnt = 0;

@@ -2,6 +2,7 @@ package source;
 
 import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
 import java.io.Reader;
@@ -11,6 +12,7 @@ import java_cup.runtime.Symbol;
 import org.apache.log4j.Logger;
 import org.apache.log4j.xml.DOMConfigurator;
 
+import rs.etf.pp1.mj.runtime.Code;
 import rs.etf.pp1.symboltable.Tab;
 import util.DetailedDumpSymbolTableVisitor;
 import util.Log4JUtils;
@@ -42,9 +44,14 @@ public class ParserTest {
 	        System.out.println(p.parserHelper.printParseCount());
 	        Tab.dump(new DetailedDumpSymbolTableVisitor());
 	        System.out.println("Dump complete.");
-	        if(p.parserHelper.isErrorDetected())
-	        {
+	        if(p.parserHelper.isErrorDetected()) {
 	        	System.out.println("GRESKA!");
+	        }
+	        else {
+	        	File objFile = new File("test/program.obj");
+	        	if (objFile.exists())
+	        		objFile.delete();
+	        	Code.write(new FileOutputStream(objFile));
 	        }
 		} 
 		finally {

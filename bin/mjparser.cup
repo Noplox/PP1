@@ -5,6 +5,7 @@ import java_cup.runtime.*;
 import util.ParserHelper;
 import rs.etf.pp1.symboltable.Tab;
 import rs.etf.pp1.symboltable.concepts.*;
+import rs.etf.pp1.mj.runtime.Code;
 
 parser code {:
 	Logger log = Logger.getLogger(getClass());
@@ -80,8 +81,8 @@ non terminal VariableDeclarationWrapperListOpt, VariableDeclarationList, Variabl
 non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
 non terminal Obj Designator;
 non terminal Obj DesignatorOperation;
-non terminal AssignOperator;
-non terminal AddOpRight, MulOpRight, AddOpLeft, MulOpLeft; 
+non terminal Integer AssignOperator, AddOpRight, MulOpRight;
+non terminal AddOpLeft, MulOpLeft; 
 non terminal Integer ExpressionList;
 non terminal Integer ActualParamListOpt, ActualParamList;
 non terminal Obj Expression;
@@ -103,6 +104,7 @@ Program ::= PROGRAM IDENT:ProgramName
 			 ProgramDeclarationListOpt LCURLYBRACE {: parser.parserHelper.enteringProgram(); :} ProgramBody 
 			{:
 				parser.parserHelper.exitingProgram();
+				Code.dataSize = Tab.currentScope().getnVars();
 				Tab.chainLocalSymbols(parser.parserHelper.currentScopeStack.pop());
 				Tab.closeScope();
 				if(!parser.parserHelper.isMainDefined())
@@ -161,6 +163,7 @@ MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper
 					{: 
 						if(MethodName.equals("main")){
 							parser.parserHelper.enteringMain();
+							Code.mainPc = Code.pc;
 							if(parser.parserHelper.getCurrentTypeDeclaration() != Tab.noObj)
 								parser.report_error("Main function must have a void return type.", null);
 						}
@@ -291,30 +294,103 @@ StatementListOpt ::= StatementList | /* epsilon */;
 StatementList ::= StatementList Statement | Statement;
 
 DesignatorStatementOpt ::= DesignatorStatement | /* epsilon */;
-DesignatorStatement ::= Designator:Designator DesignatorOperation:DesignatorOp
+DesignatorStatement ::= Designator:Designator
+						{:
+							parser.parserHelper.designatorStatementDesignator = Designator;
+						:}
+						DesignatorOperation:DesignatorOp
 						{:
 							if(!Designator.getType().assignableTo(DesignatorOp.getType()))
 								parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+							Code.store(Designator);
+							parser.parserHelper.designatorStatementDesignator = null;
 						:}
 						|
 						FunctionCall;
-DesignatorOperation ::= AssignOperator Expression:Expr
+
+DesignatorOperation ::= AssignOperator:AssignOpCode Expression:Expr
 						{:
+							switch(AssignOpCode)
+							{
+								case ParserHelper.ASSIGN:
+								break;
+								case ParserHelper.PLUSASSIGN:
+									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.add);
+								break;
+								case ParserHelper.MINUSASSIGN:
+									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.sub);
+								break;
+								case ParserHelper.MULASSIGN:
+									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.mul);
+								break;
+								case ParserHelper.DIVASSIGN:
+									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.div);
+								break;
+								case ParserHelper.MODASSIGN:
+									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.rem);
+								break;
+							}
 							RESULT = Expr;
 						:}
 						|
 						INCREMENT
 						{:
+							Code.load(parser.parserHelper.designatorStatementDesignator);
+							Code.put(Code.const_1);
+							Code.put(Code.add);
+							Code.store(parser.parserHelper.designatorStatementDesignator);
 							RESULT = new Obj(Obj.Con, "inc", Tab.intType);
 						:}
 						|
 						DECREMENT
 						{:
+							Code.load(parser.parserHelper.designatorStatementDesignator);
+							Code.put(Code.const_1);
+							Code.put(Code.sub);
+							Code.store(parser.parserHelper.designatorStatementDesignator);
 							RESULT = new Obj(Obj.Con, "inc", Tab.intType);
 						:};
-AssignOperator ::= ASSIGN | AddOpRight | MulOpRight;
-AddOpRight ::= PLUSASSIGN | MINUSASSIGN;
-MulOpRight ::= MULASSIGN | DIVASSIGN | MODASSIGN;
+
+AssignOperator ::= ASSIGN
+				{:
+					RESULT = parser.parserHelper.ASSIGN;
+				:}
+				| AddOpRight:AddOp
+				{:
+					RESULT = AddOp;
+				:}
+				| MulOpRight:MulOp
+				{:
+					RESULT = MulOp;
+				:};
+
+AddOpRight ::= PLUSASSIGN
+				{:
+					RESULT = parser.parserHelper.PLUSASSIGN;
+				:}
+				|
+				MINUSASSIGN
+				{:
+					RESULT = parser.parserHelper.MINUSASSIGN;
+				:};
+
+MulOpRight ::= MULASSIGN
+				{:
+					RESULT = parser.parserHelper.MULASSIGN;
+				:}
+				| DIVASSIGN
+				{:
+					RESULT = parser.parserHelper.DIVASSIGN;
+				:}
+				| MODASSIGN
+				{:
+					RESULT = parser.parserHelper.MODASSIGN;
+				:};
 ActualParamListOpt ::= ActualParamList:ParamNumber
 						{: RESULT = ParamNumber; :}
 						|
@@ -350,7 +426,12 @@ ExpressionOpt ::= Expression:Expr
 					{:
 						RESULT = Tab.noObj;
 					:};
-Expression ::= MinusOpt:Minus TermList:TermList
+Expression ::= MinusOpt:Minus
+				{:
+					Code.put(Code.const_);
+					Code.put(Minus);
+				:}
+				TermList:TermList
 				{:
 					if(Minus == -1 && TermList.getType() != Tab.intType)
 						parser.report_error("Minus modifier can only be user with integers! (Line " + Minusleft + ")", null);
@@ -378,8 +459,10 @@ TermList ::= TermList:TermList AddOp:IsCombinedOperator Term:Term
 				|
 				Term:Term
 				{:
+					Code.put(Code.mul);
 					RESULT = Term;
 				:};
+
 Term ::= FactorList:FactList
 		{: RESULT = FactList; :};
 FactorList ::= FactorList:FactList MulOp:IsCombinedOperator Factor:Factor
@@ -401,14 +484,17 @@ Factor ::= Designator:DesignatorObj
 			{: RESULT = FunctionCall; :}
 			| NUMCONST:Num
 			{:
+				Code.loadConst(Num);
 				RESULT = parser.parserHelper.evaluateNumConst(Num);
 			:}
 			| CHARCONST:Char
 			{:
+				Code.loadConst(Char);
 				RESULT = parser.parserHelper.evaluateCharConst(Char);
 			:}
 			| BOOLCONST:Bool
 			{:
+				Code.loadConst(Bool?1:0);
 				RESULT = parser.parserHelper.evaluateBoolConst(Bool);
 			:}
 			| ConstructorCall:ArrayType
@@ -449,6 +535,7 @@ ArrayElemRef ::= Designator:ArrayObj
 					{:
 						if(ArrayObj == Tab.noObj || ArrayObj.getKind() != Obj.Var || ArrayObj.getType().getKind() != Struct.Array)
 							parser.report_error("Name " + ArrayObj.getName() + " incorrectly used or not found on line " + ArrayObjleft, null);
+						Code.load(ArrayObj);
 					:}
 					IndexingList:Index
 					{:
@@ -526,30 +613,3 @@ IndexingExpressionOpt ::= LINDEX Expression:IndexExpr RINDEX
 							parser.report_error("Operator new must construct an array. Classes not supported." , null);
 							RESULT = Tab.noObj;
 						:};
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-		
