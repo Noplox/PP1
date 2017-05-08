@@ -9,7 +9,17 @@ import source.MJParser;
 
 public class ParserHelper {
 
-	public static final int ASSIGN = 0, PLUSASSIGN = 1, MINUSASSIGN = 2, MULASSIGN = 3, DIVASSIGN = 4, MODASSIGN = 5;
+	public static final int ASSIGN = 0,
+							PLUSASSIGN = 1,
+							MINUSASSIGN = 2,
+							MULASSIGN = 3,
+							DIVASSIGN = 4,
+							MODASSIGN = 5,
+							PLUS = 6,
+							MINUS = 7,
+							MUL = 8,
+							DIV = 9,
+							MOD = 10;
 
 	private MJParser parser;
 	public Struct boolType;
@@ -32,6 +42,11 @@ public class ParserHelper {
 	
 	public boolean isReturnFound() {
 		return returnFound;
+	}
+
+	public boolean isCombinedOperator(int mulOpCode) {
+		if(mulOpCode < 6) return true;
+		else return false;
 	}
 
 	public void setReturnFound(boolean returnFound) {

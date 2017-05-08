@@ -1,11 +1,14 @@
 program test
-	const int jedan = 1;
+	const int jedan = 11;
 	int x, y;
+	char a;
 {
+
 	void main()
 	{
-		x = 5;
-		y = -2;
-		x = jedan;
+		x = 10;
+		y = 2;
+		x /= y;
+		print(x);
 	}
 }

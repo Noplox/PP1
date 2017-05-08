@@ -86,13 +86,13 @@ non terminal AddOpLeft, MulOpLeft;
 non terminal Integer ExpressionList;
 non terminal Integer ActualParamListOpt, ActualParamList;
 non terminal Obj Expression;
-non terminal Integer MinusOpt;
+non terminal Integer MinusOpt, NumConstOpt;
 non terminal Obj TermList, Term, FactorList, Factor;
 non terminal Boolean AddOp, MulOp;
 non terminal Obj FunctionCall, ConstructorCall;
 non terminal Obj ObjectPropertyRef, ArrayElemRef, IndexingList;
 non terminal Condition, ElseOpt, ConditionTermList, ConditionTerm, ConditionFactorList, ConditionFactor, Relop;
-non terminal Obj DesignatorStatementOpt, ConditionOpt, ExpressionOpt, NumConstOpt, IndexingExpressionOpt;
+non terminal Obj DesignatorStatementOpt, ConditionOpt, ExpressionOpt, IndexingExpressionOpt;
 
 precedence left ELSE;
 
@@ -167,21 +167,26 @@ MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper
 							if(parser.parserHelper.getCurrentTypeDeclaration() != Tab.noObj)
 								parser.report_error("Main function must have a void return type.", null);
 						}
-
+						
+						Obj currentMethod = Tab.noObj;
 						Obj temp = Tab.find(MethodName);
 						if(temp == Tab.noObj)
 						{
 							parser.report_info("Method "+ MethodName+" declared on line "+ MethodNameleft, null);
-							parser.parserHelper.currentScopeStack.push(Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType()));
+							parser.parserHelper.currentScopeStack.push(currentMethod = Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType()));
 							Tab.openScope();
 						} else if (temp.getKind() != Obj.Meth) {
 							parser.report_info("Method "+ MethodName+" declared on line (has same name as a var/const)"+ MethodNameleft, null);
-							parser.parserHelper.currentScopeStack.push(Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType()));
+							parser.parserHelper.currentScopeStack.push(currentMethod = Tab.insert(Obj.Meth, MethodName, parser.parserHelper.getCurrentTypeDeclaration().getType()));
 							Tab.openScope();
 						} else {
 							parser.report_error("A constant or a variable with the same name as " + MethodName + " is already defined!", null);
 						}
 						
+						Code.put(Code.enter);
+			   			Code.put(currentMethod.getLevel());
+			   			Code.put(Tab.currentScope().getnVars());
+
 						parser.parserHelper.setCurrentTypeDeclaration(null);
 					:} 
 					LPAREN FormalParamListOpt:FormalParams
@@ -204,6 +209,8 @@ MethodDeclaration ::= StaticOpt MethodReturnType:TypeName {: parser.parserHelper
 						if(parser.parserHelper.getMethodReturnType() != Tab.noObj && !parser.parserHelper.isReturnFound())
 							parser.report_error("Method " + MethodName + " missing a return statement of type "+ parser.parserHelper.getMethodReturnType() + " (line " + MethodNameleft + ")", null);
 						parser.parserHelper.exitingMain();
+						Code.put(Code.exit);
+						Code.put(Code.return_);
 						Tab.chainLocalSymbols(parser.parserHelper.currentScopeStack.pop());
 						Tab.closeScope();
 					:};
@@ -316,22 +323,32 @@ DesignatorOperation ::= AssignOperator:AssignOpCode Expression:Expr
 								break;
 								case ParserHelper.PLUSASSIGN:
 									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.dup_x1);
+									Code.put(Code.pop);
 									Code.put(Code.add);
 								break;
 								case ParserHelper.MINUSASSIGN:
 									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.dup_x1);
+									Code.put(Code.pop);
 									Code.put(Code.sub);
 								break;
 								case ParserHelper.MULASSIGN:
 									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.dup_x1);
+									Code.put(Code.pop);
 									Code.put(Code.mul);
 								break;
 								case ParserHelper.DIVASSIGN:
 									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.dup_x1);
+									Code.put(Code.pop);
 									Code.put(Code.div);
 								break;
 								case ParserHelper.MODASSIGN:
 									Code.load(parser.parserHelper.designatorStatementDesignator);
+									Code.put(Code.dup_x1);
+									Code.put(Code.pop);
 									Code.put(Code.rem);
 								break;
 							}
@@ -343,7 +360,6 @@ DesignatorOperation ::= AssignOperator:AssignOpCode Expression:Expr
 							Code.load(parser.parserHelper.designatorStatementDesignator);
 							Code.put(Code.const_1);
 							Code.put(Code.add);
-							Code.store(parser.parserHelper.designatorStatementDesignator);
 							RESULT = new Obj(Obj.Con, "inc", Tab.intType);
 						:}
 						|
@@ -352,7 +368,6 @@ DesignatorOperation ::= AssignOperator:AssignOpCode Expression:Expr
 							Code.load(parser.parserHelper.designatorStatementDesignator);
 							Code.put(Code.const_1);
 							Code.put(Code.sub);
-							Code.store(parser.parserHelper.designatorStatementDesignator);
 							RESULT = new Obj(Obj.Con, "inc", Tab.intType);
 						:};
 
@@ -428,8 +443,7 @@ ExpressionOpt ::= Expression:Expr
 					:};
 Expression ::= MinusOpt:Minus
 				{:
-					Code.put(Code.const_);
-					Code.put(Minus);
+					Code.loadConst(Minus.intValue());
 				:}
 				TermList:TermList
 				{:
@@ -465,12 +479,28 @@ TermList ::= TermList:TermList AddOp:IsCombinedOperator Term:Term
 
 Term ::= FactorList:FactList
 		{: RESULT = FactList; :};
-FactorList ::= FactorList:FactList MulOp:IsCombinedOperator Factor:Factor
+FactorList ::= FactorList:FactList MulOp:OpCode Factor:Factor
 				{:
 					if(FactList.getType() != Tab.intType || Factor.getType() != Tab.intType)
 						parser.report_error("Multiplication operations only available with int types! (line " + Factorleft + ")", null);
-					if(IsCombinedOperator && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
+					if(parser.parserHelper.isCombinedOperator(OpCode) && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
 						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Factorleft + ")\n" + parser.parserHelper.objToString(FactList), null);
+
+					if(parser.parserHelper.isCombinedOperator(OpCode)) {
+
+					}
+					else {
+						switch(OpCode)
+						{
+							case ParserHelper.MUL:
+							break;
+							case ParserHelper.DIV:
+							break;
+							case ParserHelper.MOD:
+							break;
+						}
+					}
+
 					RESULT = Factor;
 				:}
 				|
@@ -479,7 +509,10 @@ FactorList ::= FactorList:FactList MulOp:IsCombinedOperator Factor:Factor
 					RESULT = Factor;
 				:};
 Factor ::= Designator:DesignatorObj
-			{: RESULT = DesignatorObj; :}
+			{: 
+				Code.load(DesignatorObj);
+				RESULT = DesignatorObj;
+			:}
 			| FunctionCall:FunctionCall
 			{: RESULT = FunctionCall; :}
 			| NUMCONST:Num
@@ -504,18 +537,30 @@ Factor ::= Designator:DesignatorObj
 			| LPAREN Expression:ExpressionObj RPAREN
 			{: RESULT = ExpressionObj; :};
 
-AddOp ::= AddOpLeft
-			{: RESULT = false; :}
+AddOp ::= AddOpLeft:OpCode
+			{: RESULT = OpCode; :}
 			|
-			AddOpRight
-			{: RESULT = true; :};
-AddOpLeft ::= PLUS | MINUS;
-MulOp ::= MulOpLeft
-			{: RESULT = false; :}
+			AddOpRight:OpCode
+			{: RESULT = OpCode; :};
+AddOpLeft ::= PLUS
+			{: RESULT = ParserHelper.PLUS; :}
 			|
-			MulOpRight
-			{: RESULT = true; :};
-MulOpLeft ::= MUL | DIV | MOD;
+			MINUS
+			{: RESULT = ParserHelper.MINUS; :};
+MulOp ::= MulOpLeft:OpCode
+			{: RESULT = OpCode; :}
+			|
+			MulOpRight:OpCode
+			{: RESULT = OpCode; :};
+
+MulOpLeft ::= MUL
+			{: RESULT = ParserHelper.MUL; :}
+			|
+			DIV
+			{: RESULT = ParserHelper.DIV; :}
+			|
+			MOD
+			{: RESULT = ParserHelper.MOD; :};
 
 Designator ::= IDENT:VarName
 				{:
@@ -575,12 +620,30 @@ ReadStatement ::= READ LPAREN Designator:Designator RPAREN
 							parser.report_error("Read statement can only read int char or bool types (line "+ Designatorleft + ")", null);
 					:};
 
-PrintStatement ::= PRINT LPAREN Expression:Expr NumConstOpt RPAREN
+PrintStatement ::= PRINT LPAREN Expression:Expr NumConstOpt:Width RPAREN
 					{:
 						if(Expr.getType().getKind() != Struct.Int && Expr.getType().getKind() != Struct.Char && Expr.getType().getKind() != Struct.Bool)
 							parser.report_error("Print statement can only read int char or bool types (line "+ Exprleft + ")", null);
+
+						if(Width == 0)
+							Width = 5;
+
+						Code.loadConst(Width.intValue());
+
+						if(Expr.getType() == Tab.charType)
+							Code.put(Code.bprint);
+						else
+							Code.put(Code.print);
 					:};
-NumConstOpt ::= COMMA NUMCONST | /* epsilon */;
+NumConstOpt ::= COMMA NUMCONST:Width
+				{:
+					RESULT = Width;
+				:}
+				| 
+				/* epsilon */
+				{:
+					RESULT = 0;
+				:};
 
 FunctionCall ::= Designator:FunctionObj
 				{:
