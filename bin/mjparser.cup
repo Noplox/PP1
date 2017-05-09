@@ -3,6 +3,7 @@ package source;
 import org.apache.log4j.*;
 import java_cup.runtime.*;
 import util.ParserHelper;
+import util.GeneratorHelper;
 import rs.etf.pp1.symboltable.Tab;
 import rs.etf.pp1.symboltable.concepts.*;
 import rs.etf.pp1.mj.runtime.Code;
@@ -11,6 +12,7 @@ parser code {:
 	Logger log = Logger.getLogger(getClass());
 
 	ParserHelper parserHelper = new ParserHelper(this);
+	GeneratorHelper genHelper = new GeneratorHelper(parserHelper);
 	
 	public void report_fatal_error(String message, Object info) throws java.lang.Exception {
       done_parsing();
@@ -81,14 +83,14 @@ non terminal VariableDeclarationWrapperListOpt, VariableDeclarationList, Variabl
 non terminal Statement, DesignatorStatement, IfStatement, ForStatement, ReturnStatement, ReadStatement, PrintStatement;
 non terminal Obj Designator;
 non terminal Obj DesignatorOperation;
-non terminal Integer AssignOperator, AddOpRight, MulOpRight;
-non terminal AddOpLeft, MulOpLeft; 
+non terminal Integer AssignOperator, AddOpRight, MulOpRight, AddOpLeft, MulOpLeft;
 non terminal Integer ExpressionList;
 non terminal Integer ActualParamListOpt, ActualParamList;
 non terminal Obj Expression;
-non terminal Integer MinusOpt, NumConstOpt;
+non terminal Integer NumConstOpt;
+non terminal Boolean MinusOpt;
 non terminal Obj TermList, Term, FactorList, Factor;
-non terminal Boolean AddOp, MulOp;
+non terminal Integer AddOp, MulOp;
 non terminal Obj FunctionCall, ConstructorCall;
 non terminal Obj ObjectPropertyRef, ArrayElemRef, IndexingList;
 non terminal Condition, ElseOpt, ConditionTermList, ConditionTerm, ConditionFactorList, ConditionFactor, Relop;
@@ -443,29 +445,30 @@ ExpressionOpt ::= Expression:Expr
 					:};
 Expression ::= MinusOpt:Minus
 				{:
-					Code.loadConst(Minus.intValue());
+					parser.parserHelper.minus = Minus;
 				:}
 				TermList:TermList
 				{:
-					if(Minus == -1 && TermList.getType() != Tab.intType)
+					if(Minus && TermList.getType() != Tab.intType)
 						parser.report_error("Minus modifier can only be user with integers! (Line " + Minusleft + ")", null);
+					parser.genHelper.newArray = false;
 					RESULT = TermList;
 				:};
 
 MinusOpt ::= MINUS
 			{:
-				RESULT = new Integer(-1);
+				RESULT = true;
 			:}
 			| /* epsilon */
 			{:
-				RESULT = new Integer(1);
+				RESULT = false;
 			:};
 
-TermList ::= TermList:TermList AddOp:IsCombinedOperator Term:Term
+TermList ::= TermList:TermList AddOp:OpCode Term:Term
 				{:
 					if(TermList.getType() != Tab.intType || Term.getType() != Tab.intType)
 						parser.report_error("Addition operations only available with int types! (line " + Termleft + ")", null);
-					if(IsCombinedOperator && (TermList.getKind() != Obj.Elem && (TermList.getKind() != Obj.Var || (TermList.getKind() == Obj.Var && TermList.getType().getKind() == Struct.Array))))
+					if(parser.parserHelper.isCombinedOperator(OpCode) && (TermList.getKind() != Obj.Elem && (TermList.getKind() != Obj.Var || (TermList.getKind() == Obj.Var && TermList.getType().getKind() == Struct.Array))))
 						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Termleft + ")\n" + parser.parserHelper.objToString(TermList), null);
 
 					RESULT = Term;
@@ -473,45 +476,56 @@ TermList ::= TermList:TermList AddOp:IsCombinedOperator Term:Term
 				|
 				Term:Term
 				{:
-					Code.put(Code.mul);
+					if(!parser.genHelper.newArray && parser.parserHelper.minus)
+						Code.put(Code.neg);
 					RESULT = Term;
 				:};
 
 Term ::= FactorList:FactList
-		{: RESULT = FactList; :};
-FactorList ::= FactorList:FactList MulOp:IsCombinedOperator Factor:Factor
+		{: 
+			parser.genHelper.generateMulopCode();
+			RESULT = FactList;
+		:};
+FactorList ::= FactorList:FactList MulOp:OpCode Factor:Factor
 				{:
 					if(FactList.getType() != Tab.intType || Factor.getType() != Tab.intType)
 						parser.report_error("Multiplication operations only available with int types! (line " + Factorleft + ")", null);
-					if(IsCombinedOperator && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
+					if(parser.parserHelper.isCombinedOperator(OpCode) && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
 						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Factorleft + ")\n" + parser.parserHelper.objToString(FactList), null);
+
+					if(parser.parserHelper.isCombinedOperator(OpCode)) {
+						parser.genHelper.pushMulopRightOperator(OpCode);
+						parser.genHelper.pushMulopRightOperand(Factor);
+					}
+					else {
+						parser.genHelper.putMulopLeftOperator(OpCode);
+						parser.genHelper.putMulopLeftOperand(Factor);
+					}
+
 					RESULT = Factor;
 				:}
 				|
 				Factor:Factor
 				{:
+					parser.genHelper.pushMulopRightOperand(Factor);
 					RESULT = Factor;
 				:};
 Factor ::= Designator:DesignatorObj
 			{: 
-				Code.load(DesignatorObj);
 				RESULT = DesignatorObj;
 			:}
 			| FunctionCall:FunctionCall
 			{: RESULT = FunctionCall; :}
 			| NUMCONST:Num
 			{:
-				Code.loadConst(Num);
 				RESULT = parser.parserHelper.evaluateNumConst(Num);
 			:}
 			| CHARCONST:Char
 			{:
-				Code.loadConst(Char);
 				RESULT = parser.parserHelper.evaluateCharConst(Char);
 			:}
 			| BOOLCONST:Bool
 			{:
-				Code.loadConst(Bool?1:0);
 				RESULT = parser.parserHelper.evaluateBoolConst(Bool);
 			:}
 			| ConstructorCall:ArrayType
@@ -521,18 +535,30 @@ Factor ::= Designator:DesignatorObj
 			| LPAREN Expression:ExpressionObj RPAREN
 			{: RESULT = ExpressionObj; :};
 
-AddOp ::= AddOpLeft
-			{: RESULT = false; :}
+AddOp ::= AddOpLeft:OpCode
+			{: RESULT = OpCode; :}
 			|
-			AddOpRight
-			{: RESULT = true; :};
-AddOpLeft ::= PLUS | MINUS;
-MulOp ::= MulOpLeft
-			{: RESULT = false; :}
+			AddOpRight:OpCode
+			{: RESULT = OpCode; :};
+AddOpLeft ::= PLUS
+			{: RESULT = ParserHelper.PLUS; :}
 			|
-			MulOpRight
-			{: RESULT = true; :};
-MulOpLeft ::= MUL | DIV | MOD;
+			MINUS
+			{: RESULT = ParserHelper.MINUS; :};
+MulOp ::= MulOpLeft:OpCode
+			{: RESULT = OpCode; :}
+			|
+			MulOpRight:OpCode
+			{: RESULT = OpCode; :};
+
+MulOpLeft ::= MUL
+			{: RESULT = ParserHelper.MUL; :}
+			|
+			DIV
+			{: RESULT = ParserHelper.DIV; :}
+			|
+			MOD
+			{: RESULT = ParserHelper.MOD; :};
 
 Designator ::= IDENT:VarName
 				{:
@@ -543,7 +569,9 @@ Designator ::= IDENT:VarName
 				:}
 				| ObjectPropertyRef 
 				| ArrayElemRef:ArrayObj
-				{: RESULT = ArrayObj; :};
+				{: 
+					RESULT = ArrayObj;
+				:};
 ObjectPropertyRef ::= Designator DOT IDENT:propertyName
 						{:
 							parser.report_error("Classes and objects have not been implemented!", null);
@@ -636,6 +664,12 @@ ConstructorCall ::= NEW Type:ArrayType IndexingExpressionOpt:IndexExpr
 					{:
 						if(IndexExpr.getType().getKind() != Struct.Int)
 							parser.report_error("Constructor indexing expression must return an integer. (line " + IndexExprleft + ")", null);
+						parser.genHelper.newArray = true;
+						Code.put(Code.newarray);
+						if(ArrayType.getType().getKind() == Struct.Int)
+							Code.put(1);
+						else
+							Code.put(0);
 						RESULT = new Obj(Obj.Var, "TempArray", new Struct(Struct.Array, ArrayType.getType()));
 					:};
 IndexingExpressionOpt ::= LINDEX Expression:IndexExpr RINDEX 

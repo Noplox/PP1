@@ -1,14 +1,9 @@
 program test
-	const int jedan = 11;
-	int x, y;
-	char a;
+int niz[];
+int x;
 {
-
-	void main()
-	{
-		x = 10;
-		y = 2;
-		x /= y;
-		print(x);
+	void main(){
+		niz = new int[3];
+		niz[2*3] = 5*4;
 	}
 }
