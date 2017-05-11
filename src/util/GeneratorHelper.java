@@ -21,103 +21,44 @@ public class GeneratorHelper {
 		parserHelper = myHelper;
 	}
 	
-	public void pushMulopRightOperand(Obj object) {
-		if(!newArray)
-			mulopRightStack.push(object);
+	public static void swapStack() {
+		Code.put(Code.dup_x1);
+		Code.put(Code.pop);
 	}
-	
-	public void pushMulopRightOperator(int opCode) {
-		if(!newArray) {
-			Obj operation = new Obj(Obj.Con, "op", Tab.noType);
-			
-			switch(opCode) {
-			case ParserHelper.MULASSIGN:
-				operation.setAdr(Code.mul);
-				break;
-			case ParserHelper.DIVASSIGN:
-				operation.setAdr(Code.div);
-				break;
-			case ParserHelper.MODASSIGN:
-				operation.setAdr(Code.rem);
-				break;
-			default:
-				operation.setAdr(Code.add);
-				break;
-			}
-			mulopRightStack.push(operation);
+
+	public static void prepareArrayStore() {
+		Code.put(Code.dup_x2);
+		Code.put(Code.pop);
+	}
+
+	public static void storeDesignator(Obj designator) {
+		if(designator.getType().getKind() != Struct.Array)
+			Code.store(designator);
+		else {
+			if(designator.getType().getElemType().getKind() == Struct.Int)
+				Code.put(Code.astore);
+			else
+				Code.put(Code.bastore);
 		}
 	}
-	
-	public void putMulopLeftOperand(Obj object) {
-		if(!newArray)
-			mulopLeftQueue.add(object);
-	}
-	
-	public void putMulopLeftOperator(int opCode) {
-		if(!newArray) {
-			Obj operation = new Obj(Obj.Con, "op", Tab.noType);
-			
-			switch(opCode) {
-			case ParserHelper.MUL:
-				operation.setAdr(Code.mul);
-				break;
-			case ParserHelper.DIV:
-				operation.setAdr(Code.div);
-				break;
-			case ParserHelper.MOD:
-				operation.setAdr(Code.rem);
-				break;
-			default:
-				operation.setAdr(Code.add);
-				break;
-			}
-			mulopLeftQueue.add(operation);
+/*
+	public static void loadDesignator(Obj designator) {
+		if(designator.getType().getKind() != Struct.Array) {
+			Code.load(parser.parserHelper.designatorStatementDesignator);
+		} else {
+
 		}
 	}
-	
-	public void generateMulopCode() {
-		if(!newArray) {
-			boolean lastLoad = true;
-			Obj op1 = null;
-			Obj op2 = null;
-			Obj operation = null;
-			if(!mulopLeftQueue.isEmpty()) {
-				mulopLeftOccured = true;
-				op1 = mulopRightStack.pop();
-				Code.load(op1);
-				while(!mulopLeftQueue.isEmpty()) {
-					operation = mulopLeftQueue.remove();
-					op2 = mulopLeftQueue.remove();
-					Code.load(op2);
-					Code.put(operation.getAdr());
-				}
-			}
-			if(mulopLeftOccured && !mulopRightStack.isEmpty()) {
-				operation = mulopRightStack.pop();
-				op1 = mulopRightStack.pop();
-				Code.load(op1);
-				Code.put(Code.dup_x1);
-				Code.put(Code.pop);
-				Code.put(operation.getAdr());
-				Code.store(op1);
-			} else {
-				if(!mulopRightStack.isEmpty())
-					op1 = mulopRightStack.pop();
-				else
-					lastLoad = false;
-			}
-			while(!mulopRightStack.isEmpty()) {
-				op2 = op1;
-				operation = mulopRightStack.pop();
-				op1 = mulopRightStack.pop();
-				Code.load(op1);
-				Code.load(op2);
-				Code.put(operation.getAdr());
-				Code.store(op1);
-			}
-			if(lastLoad)
-				Code.load(op1);
-			mulopLeftOccured = false;
+
+	//Vrv ne treba... Videcu
+	public static void loadArray(Obj arrayObj) {
+		Code.load(arrayObj);
+		GeneratorHelper.swapStack();
+		if(arrayObj.getType().getKind() == Struct.Int) {
+			Code.put(Code.aload);
+		} else {
+			Code.put(Code.baload);
 		}
 	}
+*/
 }
