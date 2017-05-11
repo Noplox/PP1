@@ -1,9 +1,10 @@
 program test
 int niz[];
 int x;
+int a;
+int b;
 {
 	void main(){
-		niz = new int[3];
-		niz[2*3] = 5*4;
+		a++;
 	}
 }

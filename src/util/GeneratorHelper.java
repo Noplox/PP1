@@ -1,21 +1,15 @@
 package util;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
-import java.util.Stack;
-
 import source.MJParser;
 import rs.etf.pp1.symboltable.Tab;
 import rs.etf.pp1.symboltable.concepts.Obj;
+import rs.etf.pp1.symboltable.concepts.Struct;
 import rs.etf.pp1.mj.runtime.Code;
 
 public class GeneratorHelper {
 	private ParserHelper parserHelper;
-	
-	private Stack<Obj> mulopRightStack = new Stack<>();
-	private Queue<Obj> mulopLeftQueue = new ArrayDeque<>();
-	private boolean mulopLeftOccured = false;
-	public boolean newArray = false;
+
+	public static boolean constructorCall = false;
 	
 	public GeneratorHelper(ParserHelper myHelper) {
 		parserHelper = myHelper;
@@ -35,11 +29,16 @@ public class GeneratorHelper {
 		if(designator.getType().getKind() != Struct.Array)
 			Code.store(designator);
 		else {
-			if(designator.getType().getElemType().getKind() == Struct.Int)
-				Code.put(Code.astore);
-			else
-				Code.put(Code.bastore);
+			if(!constructorCall) {
+				if(designator.getType().getElemType().getKind() == Struct.Int)
+					Code.put(Code.astore);
+				else
+					Code.put(Code.bastore);
+			} else {
+				Code.store(designator);
+			}
 		}
+		constructorCall = false;
 	}
 /*
 	public static void loadDesignator(Obj designator) {
