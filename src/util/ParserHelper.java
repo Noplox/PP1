@@ -39,7 +39,6 @@ public class ParserHelper {
 	public List<Obj> formalParamList = new ArrayList<>();
 	public Stack<Obj> methodInvocationStack = new Stack<>();
 	public Stack<Integer> formalParameterPositionStack = new Stack<>();
-	public boolean minus;
 	
 	public boolean isReturnFound() {
 		return returnFound;

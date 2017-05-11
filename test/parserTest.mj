@@ -5,6 +5,12 @@ int a;
 int b;
 {
 	void main(){
-		a++;
+		niz = new int[5];
+		niz[1] = 5;
+		niz[2] = 6;
+		niz[3] = 2;
+		x = (niz[1] + niz[2]);
+		print(x);
+		print(niz[1]);
 	}
 }

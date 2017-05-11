@@ -89,8 +89,8 @@ non terminal Integer ActualParamListOpt, ActualParamList;
 non terminal Obj Expression;
 non terminal Integer NumConstOpt;
 non terminal Boolean MinusOpt;
-non terminal Obj TermList, Term, FactorList, Factor;
-non terminal Integer AddOp, MulOp;
+non terminal Obj Term, Factor;
+non terminal Obj RightAssocTermList, RightAssocFactorList, LeftAssocFactorList, LeftAssocTermList;
 non terminal Obj FunctionCall, ConstructorCall;
 non terminal Obj ObjectPropertyRef, ArrayElemRef, IndexingList;
 non terminal Condition, ElseOpt, ConditionTermList, ConditionTerm, ConditionFactorList, ConditionFactor, Relop;
@@ -311,13 +311,32 @@ DesignatorStatement ::= Designator:Designator
 						:}
 						DesignatorOperation:DesignatorOp
 						{:
-							if(Designator.getType().getKind() == Struct.Array){
-								if(!Designator.getType().getElemType().assignableTo(DesignatorOp.getType()))
-									parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+							if(Designator.getType().getKind() == Struct.Array) {
+								if(GeneratorHelper.constructorCall || DesignatorOp.getType().getKind() == Struct.Array) {
+									if(!DesignatorOp.getType().getElemType().assignableTo(Designator.getType().getElemType()))
+										parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+								} else {
+									if(!DesignatorOp.getType().assignableTo(Designator.getType().getElemType()))
+										parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+								}
 							} else {
-								if(!Designator.getType().assignableTo(DesignatorOp.getType()))
-									parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+								if(DesignatorOp.getType().getKind() == Struct.Array) {
+									if(!DesignatorOp.getType().getElemType().assignableTo(Designator.getType()))
+										parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+								} else {
+									if(DesignatorOp.getType().assignableTo(Designator.getType()))
+										parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+								}
 							}
+//							if(Designator.getType().getKind() == Struct.Array){
+//								if(!Designator.getType().getElemType().assignableTo(DesignatorOp.getType()) && !GeneratorHelper.constructorCall)
+//									parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+//								else if (GeneratorHelper.constructorCall && !Designator.getType().getElemType().assignableTo(DesignatorOp.getType().getElemType()))
+//									parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+//							} else {
+//								if(!Designator.getType().assignableTo(DesignatorOp.getType()))
+//									parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
+//							}
 							GeneratorHelper.storeDesignator(Designator);
 							parser.parserHelper.designatorStatementDesignator = null;
 						:}
@@ -456,13 +475,22 @@ ExpressionOpt ::= Expression:Expr
 					:};
 Expression ::= MinusOpt:Minus
 				{:
-					parser.parserHelper.minus = Minus;
+					GeneratorHelper.minus = Minus;
 				:}
-				TermList:TermList
+				RightAssocTermList:RightTermList
 				{:
-					if(Minus && TermList.getType() != Tab.intType)
-						parser.report_error("Minus modifier can only be user with integers! (Line " + Minusleft + ")", null);
-					RESULT = TermList;
+					if(GeneratorHelper.additionalPopsNeeded && RightTermList.getType().getKind() == Struct.Array && !GeneratorHelper.constructorCall && GeneratorHelper.parenNestingLevel == 0) {
+						GeneratorHelper.doAdditionalPops();
+					}
+					else if(GeneratorHelper.parenNestingLevel == 0)
+						GeneratorHelper.additionalPopsNeeded = true;
+
+					if(GeneratorHelper.parenNestingLevel > 0)
+						GeneratorHelper.parenNestingLevel--;
+
+					if(Minus && RightTermList.getType() != Tab.intType)
+						parser.report_error("Minus modifier can only be used with integers! (Line " + Minusleft + ")", null);
+					RESULT = RightTermList;
 				:};
 
 MinusOpt ::= MINUS
@@ -474,82 +502,142 @@ MinusOpt ::= MINUS
 				RESULT = false;
 			:};
 
-TermList ::= TermList:TermList AddOp:OpCode Term:Term
-				{:
-					if(TermList.getType() != Tab.intType || Term.getType() != Tab.intType)
-						parser.report_error("Addition operations only available with int types! (line " + Termleft + ")", null);
-					if(parser.parserHelper.isCombinedOperator(OpCode) && (TermList.getKind() != Obj.Elem && (TermList.getKind() != Obj.Var || (TermList.getKind() == Obj.Var && TermList.getType().getKind() == Struct.Array))))
-						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Termleft + ")\n" + parser.parserHelper.objToString(TermList), null);
+//TermList ::= TermList:TermList AddOp:OpCode Term:Term
+//				{:
+//					if(TermList.getType() != Tab.intType || Term.getType() != Tab.intType)
+//						parser.report_error("Addition operations only available with int types! (line " + Termleft + ")", null);
+//					if(parser.parserHelper.isCombinedOperator(OpCode) && (TermList.getKind() != Obj.Elem && (TermList.getKind() != Obj.Var || (TermList.getKind() == Obj.Var && TermList.getType().getKind() == Struct.Array))))
+//						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Termleft + ")\n" + parser.parserHelper.objToString(TermList), null);
+//
+//					RESULT = Term;
+//				:}
+//				|
+//				Term:Term
+//				{://Proveriti dal sme neg
+//					//Code.put(Code.neg);
+//					RESULT = Term;
+//				:};
 
-					RESULT = Term;
-				:}
-				|
-				Term:Term
-				{://Proveriti dal sme neg
-					//Code.put(Code.neg);
-					RESULT = Term;
-				:};
+RightAssocTermList ::= Term:Term AddOpRight:OpCode RightAssocTermList:RightTermList
+						{:
+							if(RightTermList.getType().getKind() == Struct.Array) 
+								GeneratorHelper.removeExcessIndices();
+							GeneratorHelper.executeOperation(OpCode);
+							GeneratorHelper.storeAndLoad(Term);
+							GeneratorHelper.additionalPopsNeeded = false;
+							RESULT = Term;
+						:}
+						|
+						LeftAssocTermList:LeftTermList
+						{:
+							RESULT = LeftTermList;
+						:};
 
-Term ::= FactorList:FactList
+LeftAssocTermList ::= LeftAssocTermList:LeftTermList AddOpLeft:OpCode Term:Term
+						{:
+							if(Term.getType().getKind() == Struct.Array)
+								GeneratorHelper.removeExcessIndices();
+							GeneratorHelper.executeOperation(OpCode);
+							RESULT = Term;
+						:}
+						|
+						Term:Term
+						{:
+							RESULT = Term;
+						:};
+
+Term ::= RightAssocFactorList:RightFactList
 		{: 
-			RESULT = FactList;
+			RESULT = RightFactList;
 		:};
-FactorList ::= FactorList:FactList MulOp:OpCode Factor:Factor
-				{:
-					if(FactList.getType() != Tab.intType || Factor.getType() != Tab.intType)
-						parser.report_error("Multiplication operations only available with int types! (line " + Factorleft + ")", null);
-					if(parser.parserHelper.isCombinedOperator(OpCode) && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
-						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Factorleft + ")\n" + parser.parserHelper.objToString(FactList), null);
 
+//FactorList ::= FactorList:FactList MulOp:OpCode Factor:Factor
+//				{:
+//					if(FactList.getType() != Tab.intType || Factor.getType() != Tab.intType)
+//						parser.report_error("Multiplication operations only available with int types! (line " + Factorleft + ")", null);
+//					if(parser.parserHelper.isCombinedOperator(OpCode) && (FactList.getKind() != Obj.Elem && (FactList.getKind() != Obj.Var || (FactList.getKind() == Obj.Var && FactList.getType().getKind() == Struct.Array))))
+//						parser.report_error("Left operand of a combined assign operator must be an lvalue (line " + Factorleft + ")\n" + parser.parserHelper.objToString(FactList), null);
+//					RESULT = Factor;
+//				:}
+//				|
+//				Factor:Factor
+//				{:
+//					RESULT = Factor;
+//				:};
 
+RightAssocFactorList ::= Factor:Factor MulOpRight:OpCode RightAssocFactorList:RightFactList
+						{:
+							if(RightFactList.getType().getKind() == Struct.Array)
+								GeneratorHelper.removeExcessIndices();	//Indexi najlevljeg faktora ostaju na steku
+							GeneratorHelper.executeOperation(OpCode);
+							GeneratorHelper.storeAndLoad(Factor);
+							GeneratorHelper.additionalPopsNeeded = false;
+							RESULT = Factor;
+						:}
+						|
+						LeftAssocFactorList:LeftFactList
+						{:
+							RESULT = LeftFactList;
+						:};
 
-					RESULT = Factor;
-				:}
-				|
-				Factor:Factor
-				{:
-					RESULT = Factor;
-				:};
-Factor ::= Designator:DesignatorObj
-			{: 
-				RESULT = DesignatorObj;
+LeftAssocFactorList ::= LeftAssocFactorList:LeftFactList MulOpLeft:OpCode Factor:Factor
+						{:
+							if(Factor.getType().getKind() == Struct.Array)
+								GeneratorHelper.removeExcessIndices();	//Indexi najlevljeg faktora ostaju na steku
+							GeneratorHelper.executeOperation(OpCode);
+							RESULT = LeftFactList;
+						:}
+						|
+						Factor:Factor
+						{:
+							if(GeneratorHelper.minus)
+								Code.put(Code.neg);
+							RESULT = Factor;							
+						:};
+
+Factor ::= Designator:Designator
+			{:
+				if(Designator.getType().getKind() == Struct.Array){
+					Code.put(Code.dup2);
+					Code.put(Code.dup2);//Double double double...
+					if(Designator.getType().getElemType().getKind() == Struct.Int) 
+						Code.put(Code.aload);
+					else
+						Code.put(Code.baload);
+				}
+				RESULT = Designator;
 			:}
 			| FunctionCall:FunctionCall
 			{: RESULT = FunctionCall; :}
 			| NUMCONST:Num
 			{:
+				Code.loadConst(Num);
 				RESULT = parser.parserHelper.evaluateNumConst(Num);
 			:}
 			| CHARCONST:Char
 			{:
+				Code.loadConst(Char);
 				RESULT = parser.parserHelper.evaluateCharConst(Char);
 			:}
 			| BOOLCONST:Bool
 			{:
+				Code.loadConst(Bool?1:0);
 				RESULT = parser.parserHelper.evaluateBoolConst(Bool);
 			:}
 			| ConstructorCall:ArrayType
 			{:
 				RESULT = ArrayType;
 			:}
-			| LPAREN Expression:ExpressionObj RPAREN
+			| LPAREN
+			{: GeneratorHelper.parenNestingLevel++; :}
+			 Expression:ExpressionObj RPAREN
 			{: RESULT = ExpressionObj; :};
 
-AddOp ::= AddOpLeft:OpCode
-			{: RESULT = OpCode; :}
-			|
-			AddOpRight:OpCode
-			{: RESULT = OpCode; :};
 AddOpLeft ::= PLUS
 			{: RESULT = ParserHelper.PLUS; :}
 			|
 			MINUS
 			{: RESULT = ParserHelper.MINUS; :};
-MulOp ::= MulOpLeft:OpCode
-			{: RESULT = OpCode; :}
-			|
-			MulOpRight:OpCode
-			{: RESULT = OpCode; :};
 
 MulOpLeft ::= MUL
 			{: RESULT = ParserHelper.MUL; :}
@@ -622,7 +710,7 @@ ReadStatement ::= READ LPAREN Designator:Designator RPAREN
 
 PrintStatement ::= PRINT LPAREN Expression:Expr NumConstOpt:Width RPAREN
 					{:
-						if(Expr.getType().getKind() != Struct.Int && Expr.getType().getKind() != Struct.Char && Expr.getType().getKind() != Struct.Bool)
+						if(Expr.getType().getKind() != Struct.Int && Expr.getType().getKind() != Struct.Char && Expr.getType().getKind() != Struct.Bool && Expr.getType().getKind() != Struct.Array)
 							parser.report_error("Print statement can only read int char or bool types (line "+ Exprleft + ")", null);
 
 						if(Width == 0)
@@ -665,7 +753,7 @@ ConstructorCall ::= NEW Type:ArrayType IndexingExpressionOpt:IndexExpr
 						if(IndexExpr.getType().getKind() != Struct.Int)
 							parser.report_error("Constructor indexing expression must return an integer. (line " + IndexExprleft + ")", null);
 						GeneratorHelper.constructorCall = true;
-						Code.put(Code.pop);
+						GeneratorHelper.removePretposlednji();
 						Code.put(Code.newarray);
 						if(ArrayType.getType().getKind() == Struct.Int)
 							Code.put(1);
