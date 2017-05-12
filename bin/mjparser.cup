@@ -475,20 +475,21 @@ ExpressionOpt ::= Expression:Expr
 					:};
 Expression ::= MinusOpt:Minus
 				{:
-					GeneratorHelper.minus = Minus;
-					GeneratorHelper.expressionHasParen.push(false);
+					GeneratorHelper.expressionNeg.push(Minus);
 				:}
 				RightAssocTermList:RightTermList
 				{:
-					boolean inParen = GeneratorHelper.expressionHasParen.pop();
-					//additionalPopsNeeded = GeneratorHelper.additionalPopsNeeded.pop();
-					if(RightTermList.getType().getKind() == Struct.Array && !GeneratorHelper.constructorCall && !inParen) {
+					if(RightTermList.getType().getKind() == Struct.Array && !GeneratorHelper.constructorCall) {
 						GeneratorHelper.removeIndicesAndResetTimes(RightTermList);
-					} else
-						//GeneratorHelper.additionalPopsNeeded = 4;
+					}
 
-					if(Minus && RightTermList.getType() != Tab.intType)
-						parser.report_error("Minus modifier can only be used with integers! (Line " + Minusleft + ")", null);
+					if(RightTermList.getType().getKind() != Struct.Array){
+						if(Minus && RightTermList.getType().getKind() != Struct.Int)
+							parser.report_error("Minus modifier can only be used with integers! (Line " + Minusleft + ")", null);
+					} else {
+						if(Minus && RightTermList.getType().getElemType().getKind() != Struct.Int)
+							parser.report_error("Minus modifier can only be used with integers! (Line " + Minusleft + ")", null);
+					}
 					RESULT = RightTermList;
 				:};
 
@@ -545,6 +546,8 @@ LeftAssocTermList ::= LeftAssocTermList:LeftTermList AddOpLeft:OpCode Term:Term
 						|
 						Term:Term
 						{:
+							if(GeneratorHelper.expressionNeg.pop())
+								Code.put(Code.neg);
 							RESULT = Term;
 						:};
 
@@ -593,8 +596,6 @@ LeftAssocFactorList ::= LeftAssocFactorList:LeftFactList MulOpLeft:OpCode Factor
 						|
 						Factor:Factor
 						{:
-							if(GeneratorHelper.minus)
-								Code.put(Code.neg);
 							RESULT = Factor;
 						:};
 
@@ -634,12 +635,7 @@ Factor ::= Designator:Designator
 			{:
 				RESULT = ArrayType;
 			:}
-			| LPAREN
-			{:
-				GeneratorHelper.expressionHasParen.pop();
-				GeneratorHelper.expressionHasParen.push(true);
-			:}
-			 Expression:ExpressionObj RPAREN
+			| LPAREN Expression:ExpressionObj RPAREN
 			{: RESULT = ExpressionObj; :};
 
 AddOpLeft ::= PLUS

@@ -12,8 +12,9 @@ public class GeneratorHelper {
 	private ParserHelper parserHelper;
 
 	public static boolean constructorCall = false;
-	public static boolean minus = false;
-	public static Stack<Boolean> expressionHasParen = new Stack<>();
+	//public static boolean minus = false;
+	public static Stack<Boolean> expressionNeg = new Stack<>();
+	//public static Stack<Boolean> expressionHasParen = new Stack<>();
 	//public static Stack<Boolean> additionalPopsNeeded = new Stack<>();
 	//public static int additionalPopsNeeded = 4;
 
