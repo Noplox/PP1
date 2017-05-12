@@ -1,16 +1,24 @@
-program test
-int niz[];
-int x;
-int a;
-int b;
-{
-	void main(){
-		niz = new int[5];
-		niz[1] = 5;
-		niz[2] = 6;
-		niz[3] = 2;
-		x = (niz[1] + niz[2]);
-		print(x);
-		print(niz[1]);
+program Programcic
+	const int jedan = 1;
+	const int dva = 2;
+	int x, y, z, t;
+	int niz1[], niz2[];
+{	
+	void main() {
+		niz1 = new int[5];
+		niz1[0] = 1;
+		niz2 = new int[niz1[0]*=6];
+		niz1[0] = 1;
+		x = 3;
+		niz2[1] = 5;
+		niz1[2] = 30;
+		x += niz2[1] /= niz1[niz1[0]*=2] /= 2 * 3;
+		print(x); print(niz2[1]); print(niz1[2]);
+		x = niz2[1] * niz1[2] * niz1[3];
+		x = x += 8;
+		niz2[1] = 3;
+		x = 27;
+		x /= x /= 3;
+		print(x * 6);
 	}
 }

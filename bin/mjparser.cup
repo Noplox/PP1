@@ -324,7 +324,7 @@ DesignatorStatement ::= Designator:Designator
 									if(!DesignatorOp.getType().getElemType().assignableTo(Designator.getType()))
 										parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
 								} else {
-									if(DesignatorOp.getType().assignableTo(Designator.getType()))
+									if(!DesignatorOp.getType().assignableTo(Designator.getType()))
 										parser.report_error("Type mismatch at designator statement. (line " + Designatorleft + ")", null);
 								}
 							}
@@ -476,17 +476,16 @@ ExpressionOpt ::= Expression:Expr
 Expression ::= MinusOpt:Minus
 				{:
 					GeneratorHelper.minus = Minus;
+					GeneratorHelper.expressionHasParen.push(false);
 				:}
 				RightAssocTermList:RightTermList
 				{:
-					if(GeneratorHelper.additionalPopsNeeded && RightTermList.getType().getKind() == Struct.Array && !GeneratorHelper.constructorCall && GeneratorHelper.parenNestingLevel == 0) {
-						GeneratorHelper.doAdditionalPops();
-					}
-					else if(GeneratorHelper.parenNestingLevel == 0)
-						GeneratorHelper.additionalPopsNeeded = true;
-
-					if(GeneratorHelper.parenNestingLevel > 0)
-						GeneratorHelper.parenNestingLevel--;
+					boolean inParen = GeneratorHelper.expressionHasParen.pop();
+					//additionalPopsNeeded = GeneratorHelper.additionalPopsNeeded.pop();
+					if(RightTermList.getType().getKind() == Struct.Array && !GeneratorHelper.constructorCall && !inParen) {
+						GeneratorHelper.removeIndicesAndResetTimes(RightTermList);
+					} else
+						//GeneratorHelper.additionalPopsNeeded = 4;
 
 					if(Minus && RightTermList.getType() != Tab.intType)
 						parser.report_error("Minus modifier can only be used with integers! (Line " + Minusleft + ")", null);
@@ -521,24 +520,27 @@ MinusOpt ::= MINUS
 RightAssocTermList ::= Term:Term AddOpRight:OpCode RightAssocTermList:RightTermList
 						{:
 							if(RightTermList.getType().getKind() == Struct.Array) 
-								GeneratorHelper.removeExcessIndices();
+								GeneratorHelper.removeIndicesAndResetTimes(RightTermList);
 							GeneratorHelper.executeOperation(OpCode);
 							GeneratorHelper.storeAndLoad(Term);
-							GeneratorHelper.additionalPopsNeeded = false;
+							Term.setFpPos(Term.getFpPos() - 2);
 							RESULT = Term;
 						:}
 						|
 						LeftAssocTermList:LeftTermList
 						{:
+//							if(LeftTermList.getType().getKind() == Struct.Array && !GeneratorHelper.constructorCall && !GeneratorHelper.expressionHasParen.peek()){
+//								//GeneratorHelper.removeExcessIndices(2); ???? Mozda ovde additionalPops(additionalPopsNeeded)
+//							}
 							RESULT = LeftTermList;
 						:};
 
 LeftAssocTermList ::= LeftAssocTermList:LeftTermList AddOpLeft:OpCode Term:Term
 						{:
 							if(Term.getType().getKind() == Struct.Array)
-								GeneratorHelper.removeExcessIndices();
+								GeneratorHelper.removeIndicesAndResetTimes(Term);
 							GeneratorHelper.executeOperation(OpCode);
-							RESULT = Term;
+							RESULT = LeftTermList;
 						:}
 						|
 						Term:Term
@@ -568,10 +570,11 @@ Term ::= RightAssocFactorList:RightFactList
 RightAssocFactorList ::= Factor:Factor MulOpRight:OpCode RightAssocFactorList:RightFactList
 						{:
 							if(RightFactList.getType().getKind() == Struct.Array)
-								GeneratorHelper.removeExcessIndices();	//Indexi najlevljeg faktora ostaju na steku
+								GeneratorHelper.removeIndicesAndResetTimes(RightFactList);	//Indexi najlevljeg faktora ostaju na steku
 							GeneratorHelper.executeOperation(OpCode);
 							GeneratorHelper.storeAndLoad(Factor);
-							GeneratorHelper.additionalPopsNeeded = false;
+							//GeneratorHelper.additionalPopsNeeded -= 2;
+							Factor.setFpPos(Factor.getFpPos() - 2);
 							RESULT = Factor;
 						:}
 						|
@@ -583,7 +586,7 @@ RightAssocFactorList ::= Factor:Factor MulOpRight:OpCode RightAssocFactorList:Ri
 LeftAssocFactorList ::= LeftAssocFactorList:LeftFactList MulOpLeft:OpCode Factor:Factor
 						{:
 							if(Factor.getType().getKind() == Struct.Array)
-								GeneratorHelper.removeExcessIndices();	//Indexi najlevljeg faktora ostaju na steku
+								GeneratorHelper.removeIndicesAndResetTimes(Factor);	//Indexi najlevljeg faktora ostaju na steku
 							GeneratorHelper.executeOperation(OpCode);
 							RESULT = LeftFactList;
 						:}
@@ -592,14 +595,17 @@ LeftAssocFactorList ::= LeftAssocFactorList:LeftFactList MulOpLeft:OpCode Factor
 						{:
 							if(GeneratorHelper.minus)
 								Code.put(Code.neg);
-							RESULT = Factor;							
+							RESULT = Factor;
 						:};
 
 Factor ::= Designator:Designator
 			{:
 				if(Designator.getType().getKind() == Struct.Array){
 					Code.put(Code.dup2);
+					Code.put(Code.dup2);
+					Code.put(Code.dup2);
 					Code.put(Code.dup2);//Double double double...
+					Designator.setFpPos(4);
 					if(Designator.getType().getElemType().getKind() == Struct.Int) 
 						Code.put(Code.aload);
 					else
@@ -629,7 +635,10 @@ Factor ::= Designator:Designator
 				RESULT = ArrayType;
 			:}
 			| LPAREN
-			{: GeneratorHelper.parenNestingLevel++; :}
+			{:
+				GeneratorHelper.expressionHasParen.pop();
+				GeneratorHelper.expressionHasParen.push(true);
+			:}
 			 Expression:ExpressionObj RPAREN
 			{: RESULT = ExpressionObj; :};
 
@@ -659,7 +668,7 @@ Designator ::= IDENT:VarName
 				| ObjectPropertyRef 
 				| ArrayElemRef:ArrayObj
 				{:
-					RESULT = ArrayObj;
+					RESULT = GeneratorHelper.copyObj(ArrayObj);
 				:};
 ObjectPropertyRef ::= Designator DOT IDENT:propertyName
 						{:
@@ -672,8 +681,13 @@ ArrayElemRef ::= Designator:ArrayObj
 					:}
 					IndexingList:Index
 					{:
-						if(Index == Tab.noObj || Index.getType().getKind() != Struct.Int)
-							parser.report_error("Indexing expression of an array must return an integer! (line " + ArrayObjleft + ")", null);
+						if(Index.getType().getKind() != Struct.Array){
+							if(Index == Tab.noObj || Index.getType().getKind() != Struct.Int)
+								parser.report_error("Indexing expression of an array must return an integer! (line " + ArrayObjleft + ")", null);
+						} else {
+							if(Index == Tab.noObj || Index.getType().getElemType().getKind() != Struct.Int)
+								parser.report_error("Indexing expression of an array must return an integer! (line " + ArrayObjleft + ")", null);
+						}
 						RESULT = ArrayObj;
 					:};
 IndexingList ::= LINDEX Expression:IndexingExpression RINDEX
@@ -704,8 +718,12 @@ ReturnStatement ::= RETURN ExpressionOpt:RetExpr
 
 ReadStatement ::= READ LPAREN Designator:Designator RPAREN
 					{:
-						if(Designator.getType().getKind() != Struct.Int && Designator.getType().getKind() != Struct.Char && Designator.getType().getKind() != Struct.Bool)
-							parser.report_error("Read statement can only read int char or bool types (line "+ Designatorleft + ")", null);
+						if(Designator.getType().getKind() != Struct.Array) {
+							if(Designator.getType().getKind() != Struct.Int && Designator.getType().getKind() != Struct.Char && Designator.getType().getKind() != Struct.Bool)
+								parser.report_error("Read statement can only read int char or bool types (line "+ Designatorleft + ")", null);
+						}
+						GeneratorHelper.readDesignator(Designator);
+						RESULT = Designator; //Moze a ne mora bit'
 					:};
 
 PrintStatement ::= PRINT LPAREN Expression:Expr NumConstOpt:Width RPAREN
@@ -717,11 +735,17 @@ PrintStatement ::= PRINT LPAREN Expression:Expr NumConstOpt:Width RPAREN
 							Width = 5;
 
 						Code.loadConst(Width.intValue());
-
-						if(Expr.getType() == Tab.charType)
-							Code.put(Code.bprint);
-						else
-							Code.put(Code.print);
+						if(Expr.getType().getKind() != Struct.Array) {
+							if(Expr.getType() == Tab.charType)
+								Code.put(Code.bprint);
+							else
+								Code.put(Code.print);
+						} else {
+							if(Expr.getType().getElemType() == Tab.charType)
+								Code.put(Code.bprint);
+							else
+								Code.put(Code.print);
+						}
 					:};
 NumConstOpt ::= COMMA NUMCONST:Width
 				{:
@@ -750,8 +774,13 @@ FunctionCall ::= Designator:FunctionObj
 				:};
 ConstructorCall ::= NEW Type:ArrayType IndexingExpressionOpt:IndexExpr
 					{:
-						if(IndexExpr.getType().getKind() != Struct.Int)
-							parser.report_error("Constructor indexing expression must return an integer. (line " + IndexExprleft + ")", null);
+						if(IndexExpr.getType().getKind() != Struct.Array) {
+							if(IndexExpr.getType().getKind() != Struct.Int)
+								parser.report_error("Constructor indexing expression must return an integer. (line " + IndexExprleft + ")", null);
+						} else {
+							if(IndexExpr.getType().getElemType().getKind() != Struct.Int)
+								parser.report_error("Constructor indexing expression must return an integer. (line " + IndexExprleft + ")", null);
+						}
 						GeneratorHelper.constructorCall = true;
 						GeneratorHelper.removePretposlednji();
 						Code.put(Code.newarray);

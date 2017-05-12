@@ -1,5 +1,7 @@
 package util;
 
+import java.util.Stack;
+
 import source.MJParser;
 import rs.etf.pp1.symboltable.Tab;
 import rs.etf.pp1.symboltable.concepts.Obj;
@@ -10,10 +12,11 @@ public class GeneratorHelper {
 	private ParserHelper parserHelper;
 
 	public static boolean constructorCall = false;
-	public static boolean additionalPopsNeeded = true;
 	public static boolean minus = false;
-	public static int parenNestingLevel = 0;
-	
+	public static Stack<Boolean> expressionHasParen = new Stack<>();
+	//public static Stack<Boolean> additionalPopsNeeded = new Stack<>();
+	//public static int additionalPopsNeeded = 4;
+
 	public GeneratorHelper(ParserHelper myHelper) {
 		parserHelper = myHelper;
 	}
@@ -28,8 +31,8 @@ public class GeneratorHelper {
 		Code.put(Code.pop);
 	}
 
-	public static void doAdditionalPops() {
-		removeExcessIndices();//Clean code, as I've said.
+	public static void doAdditionalPops(int times) {
+		removeExcessIndices(times);//Clean code, as I've said.
 	}
 
 	public static void storeDesignator(Obj designator) {
@@ -48,22 +51,39 @@ public class GeneratorHelper {
 		constructorCall = false;
 	}
 
+	public static void readDesignator(Obj designator) {
+		if(designator.getType().getKind() != Struct.Array) {
+			Code.put(Code.pop);	//Remove designator's value from stack
+			if(designator.getType().getKind() != Struct.Char)
+				Code.put(Code.read);
+			else
+				Code.put(Code.bread);
+			Code.store(designator);
+		} else {
+			if(designator.getType().getElemType().getKind() != Struct.Char) {
+				Code.put(Code.read);
+				Code.put(Code.astore);
+			} else {
+				Code.put(Code.bread);
+				Code.put(Code.bastore);
+			}
+		}
+	}
+
+	//Consistency
 	public static void removePretposlednji() {
 		Code.put(Code.dup_x1);
 		Code.put(Code.pop);
 		Code.put(Code.pop);
 	}
 
-	public static void removeExcessIndices(){
-		Code.put(Code.dup_x2);
-		Code.put(Code.pop);
-		Code.put(Code.pop);
-		Code.put(Code.pop);
-		Code.put(Code.dup_x2);
-		Code.put(Code.pop);
-		Code.put(Code.pop);
-		Code.put(Code.pop);
-		//Clean code ^^
+	public static void removeExcessIndices(int times){
+		for(int i = 0; i < times; i++) {
+			Code.put(Code.dup_x2);
+			Code.put(Code.pop);
+			Code.put(Code.pop);
+			Code.put(Code.pop);
+		}//Clean code ^^
 	}
 
 	public static void executeOperation(int opCode) {
@@ -81,6 +101,11 @@ public class GeneratorHelper {
 		}
 	}
 
+	public static void removeIndicesAndResetTimes(Obj object) {
+		GeneratorHelper.removeExcessIndices(object.getFpPos());
+		object.setFpPos(0);
+	}
+
 	public static void storeAndLoad(Obj object) {
 		if(object.getType().getKind() == Struct.Array) {
 			if(object.getType().getElemType().getKind() == Struct.Int) {
@@ -94,6 +119,10 @@ public class GeneratorHelper {
 			Code.store(object);
 			Code.load(object);
 		}
+	}
+
+	public static Obj copyObj(Obj object) {
+		return new Obj(object.getKind(), object.getName(), object.getType(), object.getAdr(), object.getLevel());
 	}
 /*
 	public static void loadDesignator(Obj designator) {
